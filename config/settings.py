@@ -9,11 +9,36 @@ https://docs.djangoproject.com/en/5.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
-
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def load_env_file(path):
+    if not path.exists():
+        return
+
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+def env_bool(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+load_env_file(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
@@ -44,6 +69,9 @@ INSTALLED_APPS = [
 
     # Local apps
     'smarthome',
+    
+    # MQTT services
+    'mqtt_client',
 ]
 
 MIDDLEWARE = [
@@ -132,3 +160,22 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_ALL_ORIGINS = True
+
+# mqtt setting
+MQTT_BROKER = os.getenv("MQTT_BROKER", "127.0.0.1")
+MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
+MQTT_USERNAME = os.getenv("MQTT_USERNAME", "")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "")
+MQTT_TLS = env_bool("MQTT_TLS", default=MQTT_PORT == 8883)
+MQTT_KEEPALIVE = int(os.getenv("MQTT_KEEPALIVE", 60))
+MQTT_QOS = int(os.getenv("MQTT_QOS", 0))
+
+MQTT_ESP_MODEL = "smarthome.ESP"
+MQTT_DEVICE_MODEL = "smarthome.Device"
+MQTT_SENSOR_READING_MODEL = "smarthome.SensorReading"
+MQTT_ALERT_MODEL = "smarthome.Alert"
+MQTT_COMMAND_MODEL = "smarthome.DeviceCommand"
+
+# Ngưỡng cảnh báo test
+SMOKE_THRESHOLD = int(os.getenv("SMOKE_THRESHOLD", 800))
+TEMPERATURE_THRESHOLD = float(os.getenv("TEMPERATURE_THRESHOLD", 45))
