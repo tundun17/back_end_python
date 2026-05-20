@@ -171,7 +171,7 @@ MQTT_KEEPALIVE = int(os.getenv("MQTT_KEEPALIVE", 60))
 MQTT_QOS = int(os.getenv("MQTT_QOS", 0))
 
 MQTT_ESP_MODEL = "smarthome.ESP"
-MQTT_DEVICE_MODEL = "smarthome.Device"
+MQTT_DEVICE_MODEL = "smarthome.Switch"
 MQTT_SENSOR_READING_MODEL = "smarthome.SensorReading"
 MQTT_ALERT_MODEL = "smarthome.Alert"
 MQTT_COMMAND_MODEL = "smarthome.DeviceCommand"

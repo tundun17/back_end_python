@@ -1,8 +1,10 @@
 import json
 from typing import Any
 
+from django.apps import apps
+
 from .client import publish_json
-from .models import MQTTMessage
+from smarthome.models import MQTTMessage
 
 
 class MQTTServiceError(Exception):
@@ -124,11 +126,16 @@ def log_mqtt_message(
     if device_hashcode is None:
         device_hashcode = extract_hashcode_from_topic(topic, payload)
 
+    device = None
+    if device_hashcode:
+        ESP = apps.get_model("smarthome", "ESP")
+        device = ESP.objects.filter(hashcode=device_hashcode).first()
+
     return MQTTMessage.objects.create(
         topic=topic,
         direction=direction,
         message_type=message_type,
-        device_hashcode=device_hashcode,
+        device=device,
         payload=payload,
         is_processed=is_processed,
         error_message=error_message,
@@ -138,7 +145,7 @@ def log_mqtt_message(
 def publish_control_command(
     hashcode: str,
     command_id: int,
-    device_name: str,
+    switch_code: str,
     state: Any,
 ) -> dict:
     """
@@ -151,12 +158,12 @@ def publish_control_command(
     {
         "command_id": 25,
         "command_type": "SET_DEVICE_STATE",
-        "device_name": "DEVICE_01",
+        "switch_code": "SWITCH_01",
         "state": "ON"
     }
     """
     hashcode = validate_topic_part(hashcode, "hashcode")
-    device_name = validate_topic_part(device_name, "device_name")
+    switch_code = validate_topic_part(switch_code, "switch_code")
     state = normalize_state(state)
 
     topic = build_device_topic(hashcode, "set")
@@ -164,7 +171,7 @@ def publish_control_command(
     payload = {
         "command_id": command_id,
         "command_type": "SET_DEVICE_STATE",
-        "device_name": device_name,
+        "switch_code": switch_code,
         "state": state,
     }
 

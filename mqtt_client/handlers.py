@@ -4,22 +4,14 @@ from django.utils import timezone
 
 from .services import (
     MQTTServiceError,
-    parse_payload,
     detect_message_type,
     extract_hashcode_from_topic,
     log_mqtt_message,
+    parse_payload,
 )
 
 
 def get_model_or_none(model_path: str):
-    """
-    model_path ví dụ:
-    devices.ESP32
-    devices.Devices
-    sensors.SensorReading
-    sensors.Alert
-    controls.DeviceCommand
-    """
     try:
         app_label, model_name = model_path.split(".")
         return apps.get_model(app_label, model_name)
@@ -31,23 +23,23 @@ def get_esp_model():
     return get_model_or_none(getattr(settings, "MQTT_ESP_MODEL", "smarthome.ESP"))
 
 
-def get_device_model():
-    return get_model_or_none(getattr(settings, "MQTT_DEVICE_MODEL", "smarthome.Device"))
+def get_switch_model():
+    return get_model_or_none(getattr(settings, "MQTT_DEVICE_MODEL", "smarthome.Switch"))
 
 
 def get_sensor_reading_model():
     return get_model_or_none(
-        getattr(settings, "MQTT_SENSOR_READING_MODEL", "sensors.SensorReading")
+        getattr(settings, "MQTT_SENSOR_READING_MODEL", "smarthome.SensorReading")
     )
 
 
 def get_alert_model():
-    return get_model_or_none(getattr(settings, "MQTT_ALERT_MODEL", "sensors.Alert"))
+    return get_model_or_none(getattr(settings, "MQTT_ALERT_MODEL", "smarthome.Alert"))
 
 
 def get_command_model():
     return get_model_or_none(
-        getattr(settings, "MQTT_COMMAND_MODEL", "controls.DeviceCommand")
+        getattr(settings, "MQTT_COMMAND_MODEL", "smarthome.DeviceCommand")
     )
 
 
@@ -56,16 +48,11 @@ def set_field_if_exists(instance, field_name: str, value):
         setattr(instance, field_name, value)
 
 
-def get_esp_by_hashcode(hashcode: str):
-    esp = get_esp_model()
-
-    if esp is None:
+def get_esp_by_hashcode(hashcode: str | None):
+    ESP = get_esp_model()
+    if ESP is None or not hashcode:
         return None
-
-    try:
-        return esp.objects.filter(hashcode=hashcode).first()
-    except Exception:
-        return None
+    return ESP.objects.filter(hashcode=hashcode).first()
 
 
 def update_esp_online(esp, data: dict | None = None):
@@ -73,29 +60,17 @@ def update_esp_online(esp, data: dict | None = None):
         return
 
     data = data or {}
-
     set_field_if_exists(esp, "status", "ONLINE")
     set_field_if_exists(esp, "last_seen_at", timezone.now())
 
-    if data.get("ip_address"):
-        set_field_if_exists(esp, "ip_address", data.get("ip_address"))
-
-    if data.get("firmware_version"):
-        set_field_if_exists(esp, "firmware_version", data.get("firmware_version"))
-
-    if data.get("device_code"):
-        set_field_if_exists(esp, "device_code", data.get("device_code"))
-
-    if data.get("esp_name"):
-        set_field_if_exists(esp, "esp_name", data.get("esp_name"))
+    for field_name in ["ip_address", "firmware_version", "device_code", "esp_name"]:
+        if data.get(field_name):
+            set_field_if_exists(esp, field_name, data[field_name])
 
     esp.save()
 
 
 def handle_inbound_message(topic: str, payload_text: str):
-    """
-    Hàm chính được mqtt_worker gọi khi nhận message từ MQTT Broker.
-    """
     message_type = detect_message_type(topic)
 
     try:
@@ -113,100 +88,64 @@ def handle_inbound_message(topic: str, payload_text: str):
 
         if message_type == "SYN":
             handle_syn(payload)
-
         elif message_type == "SENSOR":
             handle_sensor(topic, payload)
-
         elif message_type == "STATE":
             handle_state(topic, payload)
-
         else:
-            raise MQTTServiceError(f"Topic chưa được hỗ trợ: {topic}")
+            raise MQTTServiceError(f"Topic chua duoc ho tro: {topic}")
 
         mqtt_log.is_processed = True
         mqtt_log.save(update_fields=["is_processed"])
-
         return mqtt_log
 
     except Exception as exc:
         try:
-            payload = {"raw": payload_text}
-            hashcode = extract_hashcode_from_topic(topic, None)
-
             log_mqtt_message(
                 topic=topic,
                 direction="INBOUND",
                 message_type=message_type,
-                device_hashcode=hashcode,
-                payload=payload,
+                device_hashcode=extract_hashcode_from_topic(topic, None),
+                payload={"raw": payload_text},
                 is_processed=False,
                 error_message=str(exc),
             )
         except Exception:
             pass
-
         raise
 
 
 def handle_syn(payload: dict):
-    """
-    Topic:
-    ping
-
-    Payload:
-    {
-        "hashcode": "ESP_ABC123",
-        "device_code": "ESP32 phòng khách",
-        "ip_address": "192.168.1.50",
-        "firmware_version": "1.0.0"
-    }
-    """
     hashcode = payload.get("hashcode")
-
     if not hashcode:
-        raise MQTTServiceError("Payload ping thiếu hashcode")
+        raise MQTTServiceError("Payload syn thieu hashcode")
 
-    device = get_esp_by_hashcode(hashcode)
-
-    if device is None:
+    esp = get_esp_by_hashcode(hashcode)
+    if esp is None:
         raise MQTTServiceError(f"Khong tim thay ESP voi hashcode={hashcode}")
 
-    update_esp_online(device, payload)
+    update_esp_online(esp, payload)
 
 
 def handle_sensor(topic: str, payload: dict):
-    """
-    Topic:
-    ESP_ABC123/sensor
-
-    Payload:
-    {
-        "temperature": 31.5,
-        "humidity": 72.0,
-        "smoke_level": 420,
-        "is_smoke_detected": false
-    }
-    """
     hashcode = extract_hashcode_from_topic(topic, payload)
-    device = get_esp_by_hashcode(hashcode)
-
-    if device is None:
+    esp = get_esp_by_hashcode(hashcode)
+    if esp is None:
         raise MQTTServiceError(f"Khong tim thay ESP voi hashcode={hashcode}")
 
-    update_esp_online(device)
+    update_esp_online(esp)
 
     SensorReading = get_sensor_reading_model()
-
     if SensorReading is None:
         return
 
-    temperature = float(payload.get("temperature", 0))
-    humidity = float(payload.get("humidity", 0))
-    smoke_level = float(payload.get("smoke_level", 0))
+    temperature = float(payload.get("temperature", 0) or 0)
+    humidity = float(payload.get("humidity", 0) or 0)
+    smoke_level = float(payload.get("smoke_level", 0) or 0)
     is_smoke_detected = bool(payload.get("is_smoke_detected", False))
 
     reading = SensorReading.objects.create(
-        device=device,
+        device=esp,
         temperature=temperature,
         humidity=humidity,
         smoke_level=smoke_level,
@@ -214,7 +153,7 @@ def handle_sensor(topic: str, payload: dict):
     )
 
     create_alerts_if_needed(
-        device=device,
+        device=esp,
         reading=reading,
         temperature=temperature,
         smoke_level=smoke_level,
@@ -230,7 +169,6 @@ def create_alerts_if_needed(
     is_smoke_detected: bool,
 ):
     Alert = get_alert_model()
-
     if Alert is None:
         return
 
@@ -243,7 +181,7 @@ def create_alerts_if_needed(
             sensor_reading=reading,
             alert_type="SMOKE_DETECTED",
             severity="CRITICAL",
-            message="Phát hiện khói vượt ngưỡng an toàn",
+            message="Smoke level is higher than safe threshold",
             threshold_value=smoke_threshold,
             actual_value=smoke_level,
         )
@@ -254,68 +192,52 @@ def create_alerts_if_needed(
             sensor_reading=reading,
             alert_type="HIGH_TEMPERATURE",
             severity="HIGH",
-            message="Nhiệt độ vượt ngưỡng an toàn",
+            message="Temperature is higher than safe threshold",
             threshold_value=temperature_threshold,
             actual_value=temperature,
         )
 
 
 def handle_state(topic: str, payload: dict):
-    """
-    Topic:
-    ESP_ABC123/state
-
-    Payload:
-    {
-        "command_id": 25,
-        "device_code": "DEVICE_01",
-        "actual_state": "ON",
-        "success": true,
-        "error_message": null
-    }
-    """
     hashcode = extract_hashcode_from_topic(topic, payload)
     esp = get_esp_by_hashcode(hashcode)
-
     if esp is None:
         raise MQTTServiceError(f"Khong tim thay ESP voi hashcode={hashcode}")
 
     update_esp_online(esp)
 
-    device_code = payload.get("device_code")
+    switch_code = payload.get("switch_code") or payload.get("device_code")
     actual_state = payload.get("actual_state")
     success = bool(payload.get("success", True))
     command_id = payload.get("command_id")
     error_message = payload.get("error_message")
 
-    if not device_code:
-        raise MQTTServiceError("Payload state thiếu device_code")
+    if not switch_code:
+        raise MQTTServiceError("Payload state thieu switch_code")
 
     if actual_state not in ["ON", "OFF"]:
-        raise MQTTServiceError("actual_state phải là ON hoặc OFF")
+        raise MQTTServiceError("actual_state phai la ON hoac OFF")
 
-    Device = get_device_model()
+    Switch = get_switch_model()
+    switch = None
 
-    device = None
+    if Switch is not None:
+        switch = Switch.objects.filter(
+            esp_device=esp,
+            switch_code=switch_code,
+        ).first()
 
-    if Device is not None:
-        device = Device.objects.filter(esp=esp, device_code=device_code).first()
-
-        if device is not None:
-            device.actual_state = actual_state
-            device.sync_status = "SYNCED" if success else "FAILED"
-            device.save(update_fields=["actual_state", "sync_status"])
+        if switch is not None:
+            switch.actual_state = actual_state
+            switch.sync_status = "SYNCED" if success else "FAILED"
+            switch.save(update_fields=["actual_state", "sync_status", "updated_at"])
 
     Command = get_command_model()
-
     if Command is not None and command_id:
         command = Command.objects.filter(id=command_id).first()
-
         if command is not None:
             command.status = "DONE" if success else "FAILED"
             command.acknowledged_at = timezone.now()
-
             if hasattr(command, "error_message"):
-                command.error_message = error_message
-
+                command.error_message = error_message or ""
             command.save()

@@ -3,12 +3,13 @@ from django.contrib import admin
 from .models import (
     ActivityLog,
     Alert,
-    Device,
     DeviceCommand,
     ESP,
     Home,
+    MQTTMessage,
     Room,
     SensorReading,
+    Switch,
 )
 
 
@@ -32,19 +33,19 @@ class ESPAdmin(admin.ModelAdmin):
     search_fields = ("hashcode", "device_code", "esp_name")
 
 
-@admin.register(Device)
-class DeviceAdmin(admin.ModelAdmin):
+@admin.register(Switch)
+class SwitchAdmin(admin.ModelAdmin):
     list_display = (
         "id",
-        "device_code",
+        "switch_code",
         "name",
-        "esp",
+        "esp_device",
         "desired_state",
         "actual_state",
         "sync_status",
     )
     list_filter = ("desired_state", "actual_state", "sync_status")
-    search_fields = ("device_code", "name", "esp__hashcode")
+    search_fields = ("switch_code", "name", "esp_device__hashcode")
 
 
 @admin.register(SensorReading)
@@ -66,14 +67,14 @@ class SensorReadingAdmin(admin.ModelAdmin):
 class DeviceCommandAdmin(admin.ModelAdmin):
     list_display = (
         "id",
-        "device",
-        "controlled_device",
+        "esp",
+        "switch",
         "command_value",
         "status",
         "created_at",
     )
     list_filter = ("status", "command_type")
-    search_fields = ("device__hashcode", "controlled_device__device_code", "command_value")
+    search_fields = ("esp__hashcode", "switch__switch_code", "command_value")
 
 
 @admin.register(Alert)
@@ -87,3 +88,10 @@ class AlertAdmin(admin.ModelAdmin):
 class ActivityLogAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "device", "action", "created_at")
     search_fields = ("user__username", "device__hashcode", "action", "description")
+
+
+@admin.register(MQTTMessage)
+class MQTTMessageAdmin(admin.ModelAdmin):
+    list_display = ("id", "topic", "direction", "message_type", "device", "is_processed", "created_at")
+    list_filter = ("direction", "message_type", "is_processed")
+    search_fields = ("topic", "device__hashcode", "error_message")

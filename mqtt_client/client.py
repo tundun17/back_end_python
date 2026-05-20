@@ -46,7 +46,7 @@ def publish_json(
     {
         "command_id": 1,
         "command_type": "SET_DEVICE_STATE",
-        "device_name": "DEVICE_01",
+        "switch_code": "SWITCH_01",
         "state": "ON"
     }
     """
