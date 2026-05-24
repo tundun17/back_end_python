@@ -40,7 +40,6 @@ Payload `syn`:
 ```json
 {
   "hashcode": "ESP_ABC123",
-  "esp_name": "ESP phong khach",
   "ip_address": "192.168.1.50",
   "firmware_version": "1.0.0"
 }
@@ -124,8 +123,8 @@ DELETE /api/rooms/{id}/
 ### ESP
 
 ```text
-GET    /api/devices/
-POST   /api/devices/
+GET    /api/esps/
+POST   /api/esps/
 GET    /api/devices/{id}/
 PATCH  /api/devices/{id}/
 DELETE /api/devices/{id}/

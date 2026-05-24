@@ -1,5 +1,6 @@
 from django.apps import apps
 from django.conf import settings
+from django.core.validators import validate_ipv46_address
 from django.utils import timezone
 
 from .services import (
@@ -63,7 +64,7 @@ def update_esp_online(esp, data: dict | None = None):
     set_field_if_exists(esp, "status", "ONLINE")
     set_field_if_exists(esp, "last_seen_at", timezone.now())
 
-    for field_name in ["ip_address", "firmware_version", "esp_name"]:
+    for field_name in ["ip_address", "firmware_version"]:
         if data.get(field_name):
             set_field_if_exists(esp, field_name, data[field_name])
 
@@ -116,9 +117,23 @@ def handle_inbound_message(topic: str, payload_text: str):
 
 
 def handle_syn(payload: dict):
+    allowed_fields = {"hashcode", "ip_address", "firmware_version"}
+    required_fields = {"hashcode", "ip_address", "firmware_version"}
+
+    extra_fields = set(payload) - allowed_fields
+    if extra_fields:
+        raise MQTTServiceError(
+            f"Payload syn chi chap nhan cac field: {sorted(allowed_fields)}"
+        )
+
+    missing_fields = required_fields - set(payload)
+    if missing_fields:
+        raise MQTTServiceError(
+            f"Payload syn thieu field: {sorted(missing_fields)}"
+        )
+
     hashcode = payload.get("hashcode")
-    if not hashcode:
-        raise MQTTServiceError("Payload syn thieu hashcode")
+    validate_ipv46_address(payload["ip_address"])
 
     esp = get_esp_by_hashcode(hashcode)
     if esp is None:
