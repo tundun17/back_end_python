@@ -55,7 +55,6 @@ class ESP(TimeStampedModel):
         OFFLINE = "OFFLINE", "Đang offline"
         ERROR = "ERROR", "Lỗi"
 
-
     home = models.ForeignKey(
         Home,
         on_delete=models.CASCADE,
@@ -71,7 +70,7 @@ class ESP(TimeStampedModel):
         blank=True,
     )
     hashcode = models.CharField(max_length=100, unique=True)
-    device_code = models.CharField(max_length=100, unique=True, null=True, blank=True)
+    # device_code = models.CharField(max_length=100, unique=True, null=True, blank=True)
     esp_name = models.CharField(max_length=100, blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     firmware_version = models.CharField(max_length=50, blank=True)
@@ -118,7 +117,7 @@ class Switch(TimeStampedModel):
         related_name="switches"
     )
     switch_code = models.CharField(max_length=100)
-    name = models.CharField(max_length=100)
+    # name = models.CharField(max_length=100)
     desired_state = models.CharField(
         max_length=10,
         choices=State.choices,
@@ -154,7 +153,7 @@ class SensorReading(models.Model):
     temperature = models.FloatField(null=True, blank=True)
     humidity = models.FloatField(null=True, blank=True)
     smoke_level = models.FloatField(null=True, blank=True)
-    is_smoke_detected = models.BooleanField(default=False)
+    # is_smoke_detected = models.BooleanField(default=False)
     recorded_at = models.DateTimeField(default=timezone.now)
     created_at = models.DateTimeField(auto_now_add=True)
 
