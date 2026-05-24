@@ -30,7 +30,7 @@ class RoomAdmin(admin.ModelAdmin):
 class ESPAdmin(admin.ModelAdmin):
     list_display = ("id", "hashcode", "esp_name", "status", "last_seen_at")
     list_filter = ("status",)
-    search_fields = ("hashcode", "device_code", "esp_name")
+    search_fields = ("hashcode", "esp_name")
 
 
 @admin.register(Switch)
@@ -38,14 +38,13 @@ class SwitchAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "switch_code",
-        "name",
         "esp_device",
         "desired_state",
         "actual_state",
         "sync_status",
     )
     list_filter = ("desired_state", "actual_state", "sync_status")
-    search_fields = ("switch_code", "name", "esp_device__hashcode")
+    search_fields = ("switch_code", "esp_device__hashcode")
 
 
 @admin.register(SensorReading)
@@ -56,10 +55,8 @@ class SensorReadingAdmin(admin.ModelAdmin):
         "temperature",
         "humidity",
         "smoke_level",
-        "is_smoke_detected",
         "created_at",
     )
-    list_filter = ("is_smoke_detected",)
     search_fields = ("device__hashcode",)
 
 

@@ -24,6 +24,10 @@ class Home(TimeStampedModel):
     class Meta:
         db_table = "homes"
         ordering = ["name"]
+        indexes = [
+            models.Index(fields=["owner", "name"]),
+            models.Index(fields=["created_at"]),
+        ]
 
     def __str__(self):
         return self.name
@@ -43,6 +47,10 @@ class Room(TimeStampedModel):
         db_table = "rooms"
         ordering = ["home", "floor", "name"]
         unique_together = ("home", "name")
+        indexes = [
+            models.Index(fields=["home", "floor", "name"]),
+            models.Index(fields=["created_at"]),
+        ]
 
     def __str__(self):
         return f"{self.home.name} - {self.name}"
@@ -70,7 +78,6 @@ class ESP(TimeStampedModel):
         blank=True,
     )
     hashcode = models.CharField(max_length=100, unique=True)
-    # device_code = models.CharField(max_length=100, unique=True, null=True, blank=True)
     esp_name = models.CharField(max_length=100, blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     firmware_version = models.CharField(max_length=50, blank=True)
@@ -88,6 +95,8 @@ class ESP(TimeStampedModel):
             models.Index(fields=["hashcode"]),
             models.Index(fields=["status"]),
             models.Index(fields=["home", "status"]),
+            models.Index(fields=["room", "status"]),
+            models.Index(fields=["last_seen_at"]),
         ]
 
     def __str__(self):
@@ -117,7 +126,6 @@ class Switch(TimeStampedModel):
         related_name="switches"
     )
     switch_code = models.CharField(max_length=100)
-    # name = models.CharField(max_length=100)
     desired_state = models.CharField(
         max_length=10,
         choices=State.choices,
@@ -139,9 +147,15 @@ class Switch(TimeStampedModel):
         db_table = "switches"
         ordering = ["esp_device", "switch_code"]
         unique_together = ("esp_device", "switch_code")
+        indexes = [
+            models.Index(fields=["esp_device", "switch_code"]),
+            models.Index(fields=["room", "actual_state"]),
+            models.Index(fields=["sync_status"]),
+            models.Index(fields=["last_controlled_at"]),
+        ]
 
     def __str__(self):
-        return f"{self.esp_device.hashcode} - {self.name}"
+        return f"{self.esp_device.hashcode} - {self.switch_code}"
 
 
 class SensorReading(models.Model):
@@ -153,13 +167,18 @@ class SensorReading(models.Model):
     temperature = models.FloatField(null=True, blank=True)
     humidity = models.FloatField(null=True, blank=True)
     smoke_level = models.FloatField(null=True, blank=True)
-    # is_smoke_detected = models.BooleanField(default=False)
     recorded_at = models.DateTimeField(default=timezone.now)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "sensor_readings"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["device", "recorded_at"]),
+            models.Index(fields=["device", "created_at"]),
+            models.Index(fields=["recorded_at"]),
+            models.Index(fields=["created_at"]),
+        ]
 
     def __str__(self):
         return f"{self.device.hashcode} - {self.created_at}"
@@ -210,6 +229,14 @@ class DeviceCommand(models.Model):
     class Meta:
         db_table = "device_commands"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["esp", "status"]),
+            models.Index(fields=["switch", "status"]),
+            models.Index(fields=["created_by", "created_at"]),
+            models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["published_at"]),
+            models.Index(fields=["acknowledged_at"]),
+        ]
 
     def __str__(self):
         return f"{self.esp.hashcode} - {self.command_type} - {self.command_value}"
@@ -260,6 +287,13 @@ class Alert(models.Model):
     class Meta:
         db_table = "alerts"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["device", "is_resolved"]),
+            models.Index(fields=["alert_type"]),
+            models.Index(fields=["severity"]),
+            models.Index(fields=["is_resolved"]),
+            models.Index(fields=["created_at"]),
+        ]
 
     def __str__(self):
         return f"{self.alert_type} - {self.device.hashcode}"
@@ -288,7 +322,6 @@ class MQTTMessage(models.Model):
         default=MessageType.UNKNOWN
     )
 
-    # Giai doan dau dung hashcode de tranh phu thuoc qua chat vao model ESP.
     device = models.ForeignKey(
         ESP,
         on_delete=models.SET_NULL,
@@ -305,6 +338,14 @@ class MQTTMessage(models.Model):
     class Meta:
         db_table = "mqtt_messages"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["device", "created_at"]),
+            models.Index(fields=["topic"]),
+            models.Index(fields=["direction"]),
+            models.Index(fields=["message_type"]),
+            models.Index(fields=["is_processed"]),
+            models.Index(fields=["created_at"]),
+        ]
 
     def __str__(self):
         return f"{self.direction} - {self.topic} - {self.message_type}"
@@ -332,6 +373,12 @@ class ActivityLog(models.Model):
     class Meta:
         db_table = "activity_logs"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "created_at"]),
+            models.Index(fields=["device", "created_at"]),
+            models.Index(fields=["action"]),
+            models.Index(fields=["created_at"]),
+        ]
 
     def __str__(self):
         return f"{self.action} - {self.created_at}"

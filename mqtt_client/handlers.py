@@ -63,7 +63,7 @@ def update_esp_online(esp, data: dict | None = None):
     set_field_if_exists(esp, "status", "ONLINE")
     set_field_if_exists(esp, "last_seen_at", timezone.now())
 
-    for field_name in ["ip_address", "firmware_version", "device_code", "esp_name"]:
+    for field_name in ["ip_address", "firmware_version", "esp_name"]:
         if data.get(field_name):
             set_field_if_exists(esp, field_name, data[field_name])
 
@@ -149,7 +149,6 @@ def handle_sensor(topic: str, payload: dict):
         temperature=temperature,
         humidity=humidity,
         smoke_level=smoke_level,
-        is_smoke_detected=is_smoke_detected,
     )
 
     create_alerts_if_needed(
