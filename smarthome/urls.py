@@ -1,10 +1,11 @@
 from django.urls import path
 
-from .views import ESPListCreateAPIView, HomeListCreateAPIView, RoomListCreateAPIView
+from .views import ESPView, HomeView, RoomView, index
 
 
 urlpatterns = [
-    path("homes/", HomeListCreateAPIView.as_view(), name="home-list-create"),
-    path("homes/<int:home_id>/rooms/", RoomListCreateAPIView.as_view(), name="room-list-create"),
-    path("esps/", ESPListCreateAPIView.as_view(), name="esp-list-create"),
+    path("", index, name="smarthome_index"),
+    path("homes/", HomeView.as_view(), name="home_views"),
+    path("homes/<int:home_id>/rooms/", RoomView.as_view(), name="room_views"),
+    path("esps/", ESPView.as_view(), name="esp_views"),
 ]
