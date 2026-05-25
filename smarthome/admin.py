@@ -28,8 +28,8 @@ class RoomAdmin(admin.ModelAdmin):
 
 @admin.register(ESP)
 class ESPAdmin(admin.ModelAdmin):
-    list_display = ("id", "hashcode", "esp_name", "status", "last_seen_at")
-    list_filter = ("status",)
+    list_display = ("id", "hashcode", "esp_name", "is_sensor", "status", "last_seen_at")
+    list_filter = ("is_sensor", "status")
     search_fields = ("hashcode", "esp_name")
 
 
@@ -54,7 +54,7 @@ class SensorReadingAdmin(admin.ModelAdmin):
         "device",
         "temperature",
         "humidity",
-        "smoke_level",
+        "gas",
         "created_at",
     )
     search_fields = ("device__hashcode",)

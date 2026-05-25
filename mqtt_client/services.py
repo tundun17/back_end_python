@@ -74,7 +74,7 @@ def detect_message_type(topic: str) -> str:
     if topic == "syn":
         return "SYN"
 
-    if topic == "ack":
+    if topic == "ack" or topic.endswith("/ack"):
         return "ACK"
 
     if topic.endswith("/sensor"):
@@ -188,22 +188,17 @@ def publish_control_command(
 
     return result
 
-def publish_ack_command(
-    hashcode: str,
-    command_id: int,
-    ack_response: str,
-) -> dict:
+def publish_ack_command(hashcode: str, ack_response: str = "OK") -> dict:
     """
-    Publish command xuống ESP32.
+    Publish ACK xuống ESP32 sau khi backend xử lý syn thành công.
 
     Topic:
     ESP_ABC123/ack
 
     Payload:
     {
-        "command_id": 25,
-        "command_type": "ACK_RESPONSE",
-        "ack_response": "OK",
+        "hashcode": "ESP_ABC123",
+        "ack": "OK"
     }
     """
     hashcode = validate_topic_part(hashcode, "hashcode")
@@ -212,9 +207,8 @@ def publish_ack_command(
     topic = build_device_topic(hashcode, "ack")
 
     payload = {
-        "command_id": command_id,
-        "command_type": "ACK_RESPONSE",
-        "ack_response": ack_response,
+        "hashcode": hashcode,
+        "ack": ack_response,
     }
 
     result = publish_json(topic=topic, payload=payload)

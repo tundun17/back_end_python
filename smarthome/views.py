@@ -2,13 +2,20 @@ import json
 
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse, JsonResponse
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
+from mqtt_client.client import MQTTClientError
+from mqtt_client.services import MQTTServiceError, normalize_state, publish_control_command
+
+from .models import DeviceCommand as DeviceCommandModel
 from .models import ESP as ESPModel
 from .models import Home as HomeModel
+from .models import MQTTMessage as MQTTMessageModel
 from .models import Room as RoomModel
+from .models import Switch as SwitchModel
 
 
 def index(request):
@@ -33,6 +40,91 @@ def parse_json_body(request):
 
 def missing_fields(body, required_fields):
     return [field for field in required_fields if field not in body]
+
+
+def home_to_dict(home):
+    return {
+        "id": home.id,
+        "name": home.name,
+        "address": home.address,
+        "description": home.description,
+        "created_at": home.created_at,
+        "updated_at": home.updated_at,
+    }
+
+
+def room_to_dict(room):
+    return {
+        "id": room.id,
+        "home_id": room.home_id,
+        "name": room.name,
+        "floor": room.floor,
+        "description": room.description,
+        "created_at": room.created_at,
+        "updated_at": room.updated_at,
+    }
+
+
+def esp_to_dict(esp):
+    return {
+        "id": esp.id,
+        "home_id": esp.home_id,
+        "room_id": esp.room_id,
+        "hashcode": esp.hashcode,
+        "name": esp.esp_name,
+        "is_sensor": esp.is_sensor,
+        "status": esp.status,
+        "ip_address": esp.ip_address,
+        "firmware_version": esp.firmware_version,
+        "last_seen_at": esp.last_seen_at,
+        "created_at": esp.created_at,
+        "updated_at": esp.updated_at,
+    }
+
+
+def switch_to_dict(switch):
+    return {
+        "id": switch.id,
+        "esp_id": switch.esp_device_id,
+        "switch_code": switch.switch_code,
+        "switch_name": switch.switch_name,
+        "desired_state": switch.desired_state,
+        "actual_state": switch.actual_state,
+        "sync_status": switch.sync_status,
+        "last_controlled_at": switch.last_controlled_at,
+        "created_at": switch.created_at,
+        "updated_at": switch.updated_at,
+    }
+
+
+def command_to_dict(command):
+    return {
+        "id": command.id,
+        "esp_id": command.esp_id,
+        "switch_id": command.switch_id,
+        "command_type": command.command_type,
+        "command_value": command.command_value,
+        "status": command.status,
+        "created_by_id": command.created_by_id,
+        "created_at": command.created_at,
+        "published_at": command.published_at,
+        "acknowledged_at": command.acknowledged_at,
+        "error_message": command.error_message,
+    }
+
+
+def mqtt_message_to_dict(message):
+    return {
+        "id": message.id,
+        "device_id": message.device_id,
+        "topic": message.topic,
+        "direction": message.direction,
+        "message_type": message.message_type,
+        "payload": message.payload,
+        "is_processed": message.is_processed,
+        "error_message": message.error_message,
+        "created_at": message.created_at,
+    }
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -81,6 +173,39 @@ class HomeView(View):
             },
             status=201,
         )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class HomeDetailView(View):
+    def get(self, request, home_id):
+        owner = get_request_owner(request)
+        try:
+            home = HomeModel.objects.get(id=home_id, owner=owner)
+        except HomeModel.DoesNotExist:
+            return JsonResponse({"message": "Nha khong ton tai"}, status=404)
+
+        return JsonResponse(home_to_dict(home))
+
+    def patch(self, request, home_id):
+        body = parse_json_body(request)
+        if body is None:
+            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+
+        owner = get_request_owner(request)
+        try:
+            home = HomeModel.objects.get(id=home_id, owner=owner)
+        except HomeModel.DoesNotExist:
+            return JsonResponse({"message": "Nha khong ton tai"}, status=404)
+
+        if "name" in body:
+            home.name = body["name"]
+        if "address" in body:
+            home.address = body["address"]
+        if "description" in body:
+            home.description = body["description"]
+
+        home.save()
+        return JsonResponse({"message": "Cap nhat nha thanh cong", "data": home_to_dict(home)})
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -142,6 +267,39 @@ class RoomView(View):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
+class RoomDetailView(View):
+    def get(self, request, home_id, room_id):
+        try:
+            room = RoomModel.objects.get(id=room_id, home_id=home_id)
+        except RoomModel.DoesNotExist:
+            return JsonResponse({"message": "Phong khong ton tai"}, status=404)
+
+        return JsonResponse(room_to_dict(room))
+
+    def patch(self, request, home_id, room_id):
+        body = parse_json_body(request)
+        if body is None:
+            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+
+        try:
+            room = RoomModel.objects.get(id=room_id, home_id=home_id)
+        except RoomModel.DoesNotExist:
+            return JsonResponse({"message": "Phong khong ton tai"}, status=404)
+
+        if "name" in body:
+            if RoomModel.objects.filter(home_id=room.home_id, name=body["name"]).exclude(id=room.id).exists():
+                return JsonResponse({"message": "Phong da ton tai trong nha nay"}, status=400)
+            room.name = body["name"]
+        if "floor" in body:
+            room.floor = body["floor"]
+        if "description" in body:
+            room.description = body["description"]
+
+        room.save()
+        return JsonResponse({"message": "Cap nhat phong thanh cong", "data": room_to_dict(room)})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
 class ESPView(View):
     def get(self, request):
         esps = ESPModel.objects.select_related("home", "room").values(
@@ -150,6 +308,7 @@ class ESPView(View):
             "room_id",
             "hashcode",
             "esp_name",
+            "is_sensor",
             "status",
             "ip_address",
             "firmware_version",
@@ -188,6 +347,7 @@ class ESPView(View):
             room_id=room_id,
             hashcode=body["hashcode"],
             esp_name=body["name"],
+            is_sensor=bool(body.get("is_sensor", False)),
         )
 
         return JsonResponse(
@@ -199,11 +359,216 @@ class ESPView(View):
                     "room_id": esp.room_id,
                     "hashcode": esp.hashcode,
                     "name": esp.esp_name,
+                    "is_sensor": esp.is_sensor,
                     "status": esp.status,
                 },
             },
             status=201,
         )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ESPDetailView(View):
+    def get(self, request, hashcode):
+        try:
+            esp = ESPModel.objects.get(hashcode=hashcode)
+        except ESPModel.DoesNotExist:
+            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+
+        return JsonResponse(esp_to_dict(esp))
+
+    def patch(self, request, hashcode):
+        body = parse_json_body(request)
+        if body is None:
+            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+
+        try:
+            esp = ESPModel.objects.get(hashcode=hashcode)
+        except ESPModel.DoesNotExist:
+            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+
+        if "name" in body:
+            esp.esp_name = body["name"]
+
+        if "is_sensor" in body:
+            if not isinstance(body["is_sensor"], bool):
+                return JsonResponse({"message": "is_sensor phai la true hoac false"}, status=400)
+            esp.is_sensor = body["is_sensor"]
+
+        if "home_id" in body:
+            if not HomeModel.objects.filter(id=body["home_id"]).exists():
+                return JsonResponse({"message": "Nha khong ton tai"}, status=404)
+            esp.home_id = body["home_id"]
+
+            if esp.room_id and not RoomModel.objects.filter(id=esp.room_id, home_id=esp.home_id).exists():
+                esp.room_id = None
+
+        if "room_id" in body:
+            room_id = body["room_id"]
+            if room_id is None:
+                esp.room_id = None
+            else:
+                if not RoomModel.objects.filter(id=room_id, home_id=esp.home_id).exists():
+                    return JsonResponse({"message": "Phong khong thuoc nha nay"}, status=400)
+                esp.room_id = room_id
+
+        esp.save()
+        return JsonResponse({"message": "Cap nhat ESP thanh cong", "data": esp_to_dict(esp)})
+
+    def delete(self, request, hashcode):
+        try:
+            esp = ESPModel.objects.get(hashcode=hashcode)
+        except ESPModel.DoesNotExist:
+            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+
+        esp.delete()
+        return JsonResponse({"message": "Xoa ESP thanh cong"})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ESPMQTTMessageView(View):
+    def get(self, request, hashcode):
+        try:
+            esp = ESPModel.objects.get(hashcode=hashcode)
+        except ESPModel.DoesNotExist:
+            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+
+        messages = MQTTMessageModel.objects.filter(device=esp)
+        return JsonResponse(
+            [mqtt_message_to_dict(message) for message in messages],
+            safe=False,
+        )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class SwitchView(View):
+    def get(self, request, hashcode):
+        try:
+            esp = ESPModel.objects.get(hashcode=hashcode)
+        except ESPModel.DoesNotExist:
+            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+
+        switches = SwitchModel.objects.filter(esp_device=esp)
+        return JsonResponse([switch_to_dict(switch) for switch in switches], safe=False)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class SwitchDetailView(View):
+    def get(self, request, hashcode, switch_code):
+        try:
+            switch = SwitchModel.objects.get(switch_code=switch_code, esp_device__hashcode=hashcode)
+        except SwitchModel.DoesNotExist:
+            return JsonResponse({"message": "Switch khong ton tai"}, status=404)
+
+        return JsonResponse(switch_to_dict(switch))
+
+    def patch(self, request, hashcode, switch_code):
+        body = parse_json_body(request)
+        if body is None:
+            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+
+        try:
+            switch = SwitchModel.objects.get(switch_code=switch_code, esp_device__hashcode=hashcode)
+        except SwitchModel.DoesNotExist:
+            return JsonResponse({"message": "Switch khong ton tai"}, status=404)
+
+        if set(body) != {"switch_name"}:
+            return JsonResponse({"message": "Chi duoc phep cap nhat switch_name"}, status=400)
+
+        switch.switch_name = body["switch_name"]
+        switch.save(update_fields=["switch_name", "updated_at"])
+        return JsonResponse({"message": "Cap nhat switch thanh cong", "data": switch_to_dict(switch)})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class SwitchControlView(View):
+    def post(self, request, hashcode, switch_code):
+        body = parse_json_body(request)
+        if body is None:
+            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+
+        if set(body) != {"state"}:
+            return JsonResponse({"message": "Payload chi chap nhan field state"}, status=400)
+
+        try:
+            state = normalize_state(body["state"])
+        except MQTTServiceError as exc:
+            return JsonResponse({"message": str(exc)}, status=400)
+
+        try:
+            switch = SwitchModel.objects.select_related("esp_device").get(
+                switch_code=switch_code,
+                esp_device__hashcode=hashcode,
+            )
+        except SwitchModel.DoesNotExist:
+            return JsonResponse({"message": "Switch khong ton tai"}, status=404)
+
+        command = DeviceCommandModel.objects.create(
+            esp=switch.esp_device,
+            switch=switch,
+            command_type="SET_DEVICE_STATE",
+            command_value=state,
+            status=DeviceCommandModel.CommandStatus.PENDING,
+            created_by=get_request_owner(request),
+        )
+
+        try:
+            publish_result = publish_control_command(
+                hashcode=hashcode,
+                command_id=command.id,
+                switch_code=switch.switch_code,
+                state=state,
+            )
+        except (MQTTClientError, MQTTServiceError) as exc:
+            command.status = DeviceCommandModel.CommandStatus.FAILED
+            command.error_message = str(exc)
+            command.save(update_fields=["status", "error_message"])
+            return JsonResponse(
+                {
+                    "message": "Publish MQTT that bai",
+                    "data": command_to_dict(command),
+                },
+                status=502,
+            )
+
+        command.status = DeviceCommandModel.CommandStatus.PUBLISHED
+        command.published_at = timezone.now()
+        command.save(update_fields=["status", "published_at"])
+
+        switch.desired_state = state
+        switch.sync_status = SwitchModel.SyncStatus.PENDING
+        switch.last_controlled_at = timezone.now()
+        switch.save(update_fields=["desired_state", "sync_status", "last_controlled_at", "updated_at"])
+
+        return JsonResponse(
+            {
+                "message": "Gui lenh dieu khien thanh cong",
+                "data": {
+                    "command": command_to_dict(command),
+                    "switch": switch_to_dict(switch),
+                    "mqtt": publish_result,
+                },
+            },
+            status=201,
+        )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class SwitchCommandView(View):
+    def get(self, request, hashcode, switch_code):
+        try:
+            switch = SwitchModel.objects.get(
+                switch_code=switch_code,
+                esp_device__hashcode=hashcode,
+            )
+        except SwitchModel.DoesNotExist:
+            return JsonResponse({"message": "Switch khong ton tai"}, status=404)
+
+        commands = DeviceCommandModel.objects.filter(
+            esp=switch.esp_device,
+            switch=switch,
+        )
+        return JsonResponse([command_to_dict(command) for command in commands], safe=False)
 
 
 api_homes = HomeView.as_view()

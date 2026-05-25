@@ -79,6 +79,7 @@ class ESP(TimeStampedModel):
     )
     hashcode = models.CharField(max_length=100, unique=True)
     esp_name = models.CharField(max_length=100, blank=True)
+    is_sensor = models.BooleanField(default=False)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     firmware_version = models.CharField(max_length=50, blank=True)
     status = models.CharField(
@@ -93,6 +94,7 @@ class ESP(TimeStampedModel):
         ordering = ["hashcode"]
         indexes = [
             models.Index(fields=["hashcode"]),
+            models.Index(fields=["is_sensor"]),
             models.Index(fields=["status"]),
             models.Index(fields=["home", "status"]),
             models.Index(fields=["room", "status"]),
@@ -118,14 +120,8 @@ class Switch(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="switches"
     )
-    room = models.ForeignKey(
-        Room,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="switches"
-    )
     switch_code = models.CharField(max_length=100)
+    switch_name = models.CharField(max_length=100, blank=True, default="")
     desired_state = models.CharField(
         max_length=10,
         choices=State.choices,
@@ -149,7 +145,6 @@ class Switch(TimeStampedModel):
         unique_together = ("esp_device", "switch_code")
         indexes = [
             models.Index(fields=["esp_device", "switch_code"]),
-            models.Index(fields=["room", "actual_state"]),
             models.Index(fields=["sync_status"]),
             models.Index(fields=["last_controlled_at"]),
         ]
@@ -166,7 +161,7 @@ class SensorReading(models.Model):
     )
     temperature = models.FloatField(null=True, blank=True)
     humidity = models.FloatField(null=True, blank=True)
-    smoke_level = models.FloatField(null=True, blank=True)
+    gas = models.FloatField(null=True, blank=True)
     recorded_at = models.DateTimeField(default=timezone.now)
     created_at = models.DateTimeField(auto_now_add=True)
 

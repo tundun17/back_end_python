@@ -141,7 +141,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Ho_Chi_Minh'
 
 USE_I18N = True
 
@@ -178,3 +178,6 @@ MQTT_COMMAND_MODEL = "smarthome.DeviceCommand"
 # Ngưỡng cảnh báo test
 SMOKE_THRESHOLD = int(os.getenv("SMOKE_THRESHOLD", 800))
 TEMPERATURE_THRESHOLD = float(os.getenv("TEMPERATURE_THRESHOLD", 45))
+
+# ESP se bi danh dau OFFLINE neu qua so phut nay khong gui MQTT len backend.
+ESP_OFFLINE_TIMEOUT_MINUTES = int(os.getenv("ESP_OFFLINE_TIMEOUT_MINUTES", 10))

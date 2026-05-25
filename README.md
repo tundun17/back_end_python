@@ -30,6 +30,7 @@ Django MQTT Worker <----> HiveMQ / MQTT Broker <----> ESP32
 
 ```text
 syn                  ESP -> Django: bao online
+{hashcode}/ack       Django -> ESP: xac nhan ESP da duoc chap nhan
 {hashcode}/sensor    ESP -> Django: gui du lieu cam bien
 {hashcode}/state     ESP -> Django: gui trang thai switch thuc te
 {hashcode}/set       Django -> ESP: gui lenh bat/tat switch
@@ -41,7 +42,18 @@ Payload `syn`:
 {
   "hashcode": "ESP_ABC123",
   "ip_address": "192.168.1.50",
-  "firmware_version": "1.0.0"
+  "firmware_version": "1.0.0",
+  "is_sensor": false,
+  "num_switches": 2
+}
+```
+
+Payload ACK sau khi backend xu ly `syn` thanh cong:
+
+```json
+{
+  "hashcode": "ESP_ABC123",
+  "ack": "OK"
 }
 ```
 
@@ -51,8 +63,7 @@ Payload sensor:
 {
   "temperature": 31.5,
   "humidity": 72.0,
-  "smoke_level": 420,
-  "is_smoke_detected": false
+  "gas": 420
 }
 ```
 
@@ -74,8 +85,6 @@ Payload state:
   "command_id": 25,
   "switch_code": "SWITCH_01",
   "actual_state": "ON",
-  "success": true,
-  "error_message": null
 }
 ```
 
@@ -125,31 +134,37 @@ DELETE /api/rooms/{id}/
 ```text
 GET    /api/esps/
 POST   /api/esps/
-GET    /api/devices/{id}/
-PATCH  /api/devices/{id}/
-DELETE /api/devices/{id}/
-GET    /api/devices/{id}/status/
-GET    /api/devices/{id}/mqtt-messages/
-POST   /api/devices/{id}/mark-offline/
+GET    /api/esps/{hashcode}/
+PATCH  /api/esps/{hashcode}/
+DELETE /api/esps/{hashcode}/
+GET    /api/esps/{hashcode}/mqtt-messages/
 ```
 
 ### Switch va dieu khien
 
 ```text
-GET    /api/switches/
-POST   /api/switches/
-GET    /api/switches/{id}/
-PATCH  /api/switches/{id}/
-DELETE /api/switches/{id}/
-POST   /api/switches/{id}/control/
-GET    /api/switches/{id}/commands/
+GET    /api/esps/{hashcode}/switches/
+GET    /api/esps/{hashcode}/switches/{switch_code}/
+PATCH  /api/esps/{hashcode}/switches/{switch_code}/
+POST   /api/esps/{hashcode}/switches/{switch_code}/control/
+GET    /api/esps/{hashcode}/switches/{switch_code}/commands/
 ```
+
+Payload control switch:
+
+```json
+{
+  "state": "ON"
+}
+```
+
+`state` chap nhan: `ON`, `OFF`, `1`, `0`, `true`, `false`.
 
 ### Sensor, alert va dashboard
 
 ```text
-GET   /api/devices/{id}/sensor-readings/latest/
-GET   /api/devices/{id}/sensor-readings/history/
+GET   /api/esps/{hashcode}/sensor-readings/latest/
+GET   /api/esps/{hashcode}/sensor-readings/history/
 GET   /api/sensor-readings/
 GET   /api/alerts/
 GET   /api/alerts/{id}/
@@ -188,6 +203,14 @@ Chay MQTT worker o terminal khac:
 python manage.py mqtt_worker
 ```
 
+Kiem tra ESP offline:
+
+```bash
+python manage.py health_check
+```
+
+Neu ESP dang `ONLINE` nhung qua 10 phut khong gui MQTT len backend, command nay se chuyen ESP do sang `OFFLINE`.
+
 ## Cau hinh MQTT
 
 Tao file `.env` tai thu muc project:
@@ -202,6 +225,7 @@ MQTT_KEEPALIVE=60
 MQTT_QOS=0
 SMOKE_THRESHOLD=800
 TEMPERATURE_THRESHOLD=45
+ESP_OFFLINE_TIMEOUT_MINUTES=10
 ```
 
 ## Kiem thu khong can ESP
@@ -226,7 +250,10 @@ Payload:
 ```json
 {
   "hashcode": "ESP_ABC123",
-  "esp_name": "ESP test"
+  "ip_address": "192.168.1.50",
+  "firmware_version": "1.0.0",
+  "is_sensor": false,
+  "num_switches": 2
 }
 ```
 
@@ -242,8 +269,7 @@ Payload:
 {
   "temperature": 50,
   "humidity": 70,
-  "smoke_level": 900,
-  "is_smoke_detected": true
+  "gas": 900
 }
 ```
 

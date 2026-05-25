@@ -9,6 +9,7 @@ from .services import (
     extract_hashcode_from_topic,
     log_mqtt_message,
     parse_payload,
+    publish_ack_command,
 )
 
 
@@ -68,7 +69,26 @@ def update_esp_online(esp, data: dict | None = None):
         if data.get(field_name):
             set_field_if_exists(esp, field_name, data[field_name])
 
+    if "is_sensor" in data:
+        set_field_if_exists(esp, "is_sensor", data["is_sensor"])
+
     esp.save()
+
+
+def sync_switches_from_syn(esp, num_switches: int):
+    Switch = get_switch_model()
+    if Switch is None:
+        return
+
+    for number in range(1, num_switches + 1):
+        switch_code = f"device_{number}"
+        Switch.objects.get_or_create(
+            esp_device=esp,
+            switch_code=switch_code,
+            defaults={
+                "switch_name": "",
+            },
+        )
 
 
 def handle_inbound_message(topic: str, payload_text: str):
@@ -117,8 +137,20 @@ def handle_inbound_message(topic: str, payload_text: str):
 
 
 def handle_syn(payload: dict):
-    allowed_fields = {"hashcode", "ip_address", "firmware_version"}
-    required_fields = {"hashcode", "ip_address", "firmware_version"}
+    allowed_fields = {
+        "hashcode",
+        "ip_address",
+        "firmware_version",
+        "is_sensor",
+        "num_switches",
+    }
+    required_fields = {
+        "hashcode",
+        "ip_address",
+        "firmware_version",
+        "is_sensor",
+        "num_switches",
+    }
 
     extra_fields = set(payload) - allowed_fields
     if extra_fields:
@@ -135,14 +167,43 @@ def handle_syn(payload: dict):
     hashcode = payload.get("hashcode")
     validate_ipv46_address(payload["ip_address"])
 
+    if not isinstance(payload["is_sensor"], bool):
+        raise MQTTServiceError("Payload syn field is_sensor phai la boolean")
+
+    if isinstance(payload["num_switches"], bool) or not isinstance(payload["num_switches"], int):
+        raise MQTTServiceError("Payload syn field num_switches phai la so nguyen")
+
+    if payload["num_switches"] < 0:
+        raise MQTTServiceError("Payload syn field num_switches phai lon hon hoac bang 0")
+
     esp = get_esp_by_hashcode(hashcode)
     if esp is None:
         raise MQTTServiceError(f"Khong tim thay ESP voi hashcode={hashcode}")
 
     update_esp_online(esp, payload)
 
+    if not payload["is_sensor"]:
+        sync_switches_from_syn(esp, payload["num_switches"])
+
+    publish_ack_command(hashcode=hashcode)
+
 
 def handle_sensor(topic: str, payload: dict):
+    allowed_fields = {"temperature", "humidity", "gas"}
+    required_fields = {"temperature", "humidity", "gas"}
+
+    extra_fields = set(payload) - allowed_fields
+    if extra_fields:
+        raise MQTTServiceError(
+            f"Payload sensor chi chap nhan cac field: {sorted(allowed_fields)}"
+        )
+
+    missing_fields = required_fields - set(payload)
+    if missing_fields:
+        raise MQTTServiceError(
+            f"Payload sensor thieu field: {sorted(missing_fields)}"
+        )
+
     hashcode = extract_hashcode_from_topic(topic, payload)
     esp = get_esp_by_hashcode(hashcode)
     if esp is None:
@@ -156,22 +217,20 @@ def handle_sensor(topic: str, payload: dict):
 
     temperature = float(payload.get("temperature", 0) or 0)
     humidity = float(payload.get("humidity", 0) or 0)
-    smoke_level = float(payload.get("smoke_level", 0) or 0)
-    is_smoke_detected = bool(payload.get("is_smoke_detected", False))
+    gas = float(payload.get("gas", 0) or 0)
 
     reading = SensorReading.objects.create(
         device=esp,
         temperature=temperature,
         humidity=humidity,
-        smoke_level=smoke_level,
+        gas=gas,
     )
 
     create_alerts_if_needed(
         device=esp,
         reading=reading,
         temperature=temperature,
-        smoke_level=smoke_level,
-        is_smoke_detected=is_smoke_detected,
+        gas=gas,
     )
 
 
@@ -179,8 +238,7 @@ def create_alerts_if_needed(
     device,
     reading,
     temperature: float,
-    smoke_level: float,
-    is_smoke_detected: bool,
+    gas: float,
 ):
     Alert = get_alert_model()
     if Alert is None:
@@ -189,15 +247,15 @@ def create_alerts_if_needed(
     smoke_threshold = getattr(settings, "SMOKE_THRESHOLD", 800)
     temperature_threshold = getattr(settings, "TEMPERATURE_THRESHOLD", 45)
 
-    if is_smoke_detected or smoke_level >= smoke_threshold:
+    if gas >= smoke_threshold:
         Alert.objects.create(
             device=device,
             sensor_reading=reading,
             alert_type="SMOKE_DETECTED",
             severity="CRITICAL",
-            message="Smoke level is higher than safe threshold",
+            message="Gas value is higher than safe threshold",
             threshold_value=smoke_threshold,
-            actual_value=smoke_level,
+            actual_value=gas,
         )
 
     if temperature >= temperature_threshold:
