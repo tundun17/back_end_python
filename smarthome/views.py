@@ -41,6 +41,14 @@ def missing_fields(body, required_fields):
     return [field for field in required_fields if field not in body]
 
 
+def get_topic_hashcode(topic):
+    if not topic:
+        return ""
+    if topic == "syn":
+        return ""
+    return topic.split("/", 1)[0]
+
+
 def user_to_dict(user):
     return {
         "id": user.id,
@@ -337,6 +345,8 @@ class ChangePasswordView(APIView):
 
 
 class HomeView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         owner = get_request_owner(request)
         homes = HomeModel.objects.filter(owner=owner).values(
@@ -385,6 +395,8 @@ class HomeView(APIView):
 
 
 class HomeDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, home_id):
         owner = get_request_owner(request)
         try:
@@ -427,6 +439,8 @@ class HomeDetailView(APIView):
 
 
 class HomeOverviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, home_id):
         owner = get_request_owner(request)
         try:
@@ -438,6 +452,8 @@ class HomeOverviewView(APIView):
 
 
 class RoomView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, home_id):
         owner = get_request_owner(request)
         if not HomeModel.objects.filter(id=home_id, owner=owner).exists():
@@ -503,6 +519,8 @@ class RoomView(APIView):
 
 
 class RoomDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, home_id, room_id):
         owner = get_request_owner(request)
         try:
@@ -550,8 +568,10 @@ class RoomDetailView(APIView):
 
 
 class ESPView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
-        esps = ESPModel.objects.select_related("home", "room").values(
+        esps = ESPModel.objects.filter(home__owner=request.user).select_related("home", "room").values(
             "id",
             "home_id",
             "room_id",
@@ -578,12 +598,12 @@ class ESPView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if not HomeModel.objects.filter(id=body["home_id"]).exists():
+        if not HomeModel.objects.filter(id=body["home_id"], owner=request.user).exists():
             return Response({"message": "Nha khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         room_id = body.get("room_id")
         if room_id is not None:
-            if not RoomModel.objects.filter(id=room_id, home_id=body["home_id"]).exists():
+            if not RoomModel.objects.filter(id=room_id, home_id=body["home_id"], home__owner=request.user).exists():
                 return Response({"message": "Phong khong thuoc nha nay"}, status=status.HTTP_400_BAD_REQUEST)
 
         if ESPModel.objects.filter(hashcode=body["hashcode"]).exists():
@@ -615,9 +635,11 @@ class ESPView(APIView):
 
 
 class ESPDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, hashcode):
         try:
-            esp = ESPModel.objects.get(hashcode=hashcode)
+            esp = ESPModel.objects.get(hashcode=hashcode, home__owner=request.user)
         except ESPModel.DoesNotExist:
             return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -627,7 +649,7 @@ class ESPDetailView(APIView):
         body = request.data
 
         try:
-            esp = ESPModel.objects.get(hashcode=hashcode)
+            esp = ESPModel.objects.get(hashcode=hashcode, home__owner=request.user)
         except ESPModel.DoesNotExist:
             return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -640,11 +662,11 @@ class ESPDetailView(APIView):
             esp.is_sensor = body["is_sensor"]
 
         if "home_id" in body:
-            if not HomeModel.objects.filter(id=body["home_id"]).exists():
+            if not HomeModel.objects.filter(id=body["home_id"], owner=request.user).exists():
                 return Response({"message": "Nha khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
             esp.home_id = body["home_id"]
 
-            if esp.room_id and not RoomModel.objects.filter(id=esp.room_id, home_id=esp.home_id).exists():
+            if esp.room_id and not RoomModel.objects.filter(id=esp.room_id, home_id=esp.home_id, home__owner=request.user).exists():
                 esp.room_id = None
 
         if "room_id" in body:
@@ -652,7 +674,7 @@ class ESPDetailView(APIView):
             if room_id is None:
                 esp.room_id = None
             else:
-                if not RoomModel.objects.filter(id=room_id, home_id=esp.home_id).exists():
+                if not RoomModel.objects.filter(id=room_id, home_id=esp.home_id, home__owner=request.user).exists():
                     return Response({"message": "Phong khong thuoc nha nay"}, status=status.HTTP_400_BAD_REQUEST)
                 esp.room_id = room_id
 
@@ -661,7 +683,7 @@ class ESPDetailView(APIView):
 
     def delete(self, request, hashcode):
         try:
-            esp = ESPModel.objects.get(hashcode=hashcode)
+            esp = ESPModel.objects.get(hashcode=hashcode, home__owner=request.user)
         except ESPModel.DoesNotExist:
             return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -670,9 +692,11 @@ class ESPDetailView(APIView):
 
 
 class ESPMQTTMessageView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, hashcode):
         try:
-            esp = ESPModel.objects.get(hashcode=hashcode)
+            esp = ESPModel.objects.get(hashcode=hashcode, home__owner=request.user)
         except ESPModel.DoesNotExist:
             return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -684,9 +708,11 @@ class ESPMQTTMessageView(APIView):
 
 
 class ESPSensorLatestView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, hashcode):
         try:
-            esp = ESPModel.objects.get(hashcode=hashcode)
+            esp = ESPModel.objects.get(hashcode=hashcode, home__owner=request.user)
         except ESPModel.DoesNotExist:
             return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -698,9 +724,11 @@ class ESPSensorLatestView(APIView):
 
 
 class ESPSensorHistoryView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, hashcode):
         try:
-            esp = ESPModel.objects.get(hashcode=hashcode)
+            esp = ESPModel.objects.get(hashcode=hashcode, home__owner=request.user)
         except ESPModel.DoesNotExist:
             return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -710,6 +738,8 @@ class ESPSensorHistoryView(APIView):
 
 
 class DebugMQTTInboundView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         body = request.data
 
@@ -722,6 +752,10 @@ class DebugMQTTInboundView(APIView):
 
         if not isinstance(body["payload"], dict):
             return Response({"message": "payload phai la JSON object"}, status=status.HTTP_400_BAD_REQUEST)
+
+        hashcode = body["payload"].get("hashcode") or get_topic_hashcode(body["topic"])
+        if hashcode and not ESPModel.objects.filter(hashcode=hashcode, home__owner=request.user).exists():
+            return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             mqtt_log = handle_inbound_message(body["topic"], json.dumps(body["payload"]))
@@ -741,9 +775,11 @@ class DebugMQTTInboundView(APIView):
 
 
 class SwitchView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, hashcode):
         try:
-            esp = ESPModel.objects.get(hashcode=hashcode)
+            esp = ESPModel.objects.get(hashcode=hashcode, home__owner=request.user)
         except ESPModel.DoesNotExist:
             return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -752,9 +788,15 @@ class SwitchView(APIView):
 
 
 class SwitchDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, hashcode, switch_code):
         try:
-            switch = SwitchModel.objects.get(switch_code=switch_code, esp_device__hashcode=hashcode)
+            switch = SwitchModel.objects.get(
+                switch_code=switch_code,
+                esp_device__hashcode=hashcode,
+                esp_device__home__owner=request.user,
+            )
         except SwitchModel.DoesNotExist:
             return Response({"message": "Switch khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -764,7 +806,11 @@ class SwitchDetailView(APIView):
         body = request.data
 
         try:
-            switch = SwitchModel.objects.get(switch_code=switch_code, esp_device__hashcode=hashcode)
+            switch = SwitchModel.objects.get(
+                switch_code=switch_code,
+                esp_device__hashcode=hashcode,
+                esp_device__home__owner=request.user,
+            )
         except SwitchModel.DoesNotExist:
             return Response({"message": "Switch khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -777,6 +823,8 @@ class SwitchDetailView(APIView):
 
 
 class SwitchControlView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request, hashcode, switch_code):
         body = request.data
 
@@ -792,6 +840,7 @@ class SwitchControlView(APIView):
             switch = SwitchModel.objects.select_related("esp_device").get(
                 switch_code=switch_code,
                 esp_device__hashcode=hashcode,
+                esp_device__home__owner=request.user,
             )
         except SwitchModel.DoesNotExist:
             return Response({"message": "Switch khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
@@ -847,11 +896,14 @@ class SwitchControlView(APIView):
 
 
 class SwitchCommandView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, hashcode, switch_code):
         try:
             switch = SwitchModel.objects.get(
                 switch_code=switch_code,
                 esp_device__hashcode=hashcode,
+                esp_device__home__owner=request.user,
             )
         except SwitchModel.DoesNotExist:
             return Response({"message": "Switch khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
