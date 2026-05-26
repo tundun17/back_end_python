@@ -1,13 +1,14 @@
 import json
 
-from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse
 from django.utils import timezone
-from django.utils.decorators import method_decorator
-from django.views import View
-from django.views.decorators.csrf import csrf_exempt
+from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from mqtt_client.handlers import handle_inbound_message
 from mqtt_client.client import MQTTClientError
@@ -34,13 +35,6 @@ def get_request_owner(request):
     User = get_user_model()
     user, _ = User.objects.get_or_create(username="demo_user")
     return user
-
-
-def parse_json_body(request):
-    try:
-        return json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return None
 
 
 def missing_fields(body, required_fields):
@@ -197,19 +191,18 @@ def home_overview_to_dict(home):
     }
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class RegisterView(View):
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request):
-        body = parse_json_body(request)
-        if body is None:
-            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+        body = request.data
 
         required_fields = ["username", "password", "password_confirm"]
         missing = missing_fields(body, required_fields)
         if missing:
-            return JsonResponse(
+            return Response(
                 {"message": "Thieu du lieu", "missing_fields": missing},
-                status=400,
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         username = body["username"]
@@ -220,19 +213,31 @@ class RegisterView(View):
         last_name = body.get("last_name", "")
 
         if password != password_confirm:
-            return JsonResponse({"message": "Mat khau xac nhan khong khop"}, status=400)
+            return Response(
+                {"message": "Mat khau xac nhan khong khop"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         User = get_user_model()
         if User.objects.filter(username=username).exists():
-            return JsonResponse({"message": "Username da ton tai"}, status=400)
+            return Response(
+                {"message": "Username da ton tai"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if email and User.objects.filter(email=email).exists():
-            return JsonResponse({"message": "Email da ton tai"}, status=400)
+            return Response(
+                {"message": "Email da ton tai"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             validate_password(password)
         except ValidationError as exc:
-            return JsonResponse({"message": "Mat khau khong hop le", "errors": exc.messages}, status=400)
+            return Response(
+                {"message": "Mat khau khong hop le", "errors": exc.messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         user = User.objects.create_user(
             username=username,
@@ -242,63 +247,40 @@ class RegisterView(View):
             last_name=last_name,
         )
 
-        return JsonResponse(
+        return Response(
             {"message": "Dang ky tai khoan thanh cong", "data": user_to_dict(user)},
-            status=201,
+            status=status.HTTP_201_CREATED,
         )
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class LoginView(View):
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
-        body = parse_json_body(request)
-        if body is None:
-            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
-
-        missing = missing_fields(body, ["username", "password"])
-        if missing:
-            return JsonResponse(
-                {"message": "Thieu du lieu", "missing_fields": missing},
-                status=400,
-            )
-
-        user = authenticate(request, username=body["username"], password=body["password"])
-        if user is None:
-            return JsonResponse({"message": "Username hoac mat khau khong dung"}, status=400)
-
-        login(request, user)
-        return JsonResponse({"message": "Dang nhap thanh cong", "data": user_to_dict(user)})
+        return Response(
+            {"message": "JWT logout phia server khong luu session. Frontend chi can xoa access/refresh token."},
+            status=status.HTTP_200_OK,
+        )
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class LogoutView(View):
-    def post(self, request):
-        logout(request)
-        return JsonResponse({"message": "Dang xuat thanh cong"})
+class UserMeView(APIView):
+    permission_classes = [IsAuthenticated]
 
-
-@method_decorator(csrf_exempt, name="dispatch")
-class UserMeView(View):
     def get(self, request):
-        if not request.user.is_authenticated:
-            return JsonResponse({"message": "Ban chua dang nhap"}, status=401)
-
-        return JsonResponse(user_to_dict(request.user))
+        return Response(user_to_dict(request.user), status=status.HTTP_200_OK)
 
     def patch(self, request):
-        if not request.user.is_authenticated:
-            return JsonResponse({"message": "Ban chua dang nhap"}, status=401)
-
-        body = parse_json_body(request)
-        if body is None:
-            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+        body = request.data
 
         user = request.user
         email = body.get("email", user.email)
 
         User = get_user_model()
         if email and User.objects.exclude(id=user.id).filter(email=email).exists():
-            return JsonResponse({"message": "Email da duoc su dung"}, status=400)
+            return Response(
+                {"message": "Email da duoc su dung"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if "email" in body:
             user.email = email
@@ -308,46 +290,53 @@ class UserMeView(View):
             user.last_name = body["last_name"]
 
         user.save(update_fields=["email", "first_name", "last_name"])
-        return JsonResponse({"message": "Cap nhat user thanh cong", "data": user_to_dict(user)})
+        return Response(
+            {"message": "Cap nhat user thanh cong", "data": user_to_dict(user)},
+            status=status.HTTP_200_OK,
+        )
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class ChangePasswordView(View):
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
-        if not request.user.is_authenticated:
-            return JsonResponse({"message": "Ban chua dang nhap"}, status=401)
-
-        body = parse_json_body(request)
-        if body is None:
-            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+        body = request.data
 
         required_fields = ["old_password", "new_password", "new_password_confirm"]
         missing = missing_fields(body, required_fields)
         if missing:
-            return JsonResponse(
+            return Response(
                 {"message": "Thieu du lieu", "missing_fields": missing},
-                status=400,
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         user = request.user
         if not user.check_password(body["old_password"]):
-            return JsonResponse({"message": "Mat khau cu khong dung"}, status=400)
+            return Response(
+                {"message": "Mat khau cu khong dung"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if body["new_password"] != body["new_password_confirm"]:
-            return JsonResponse({"message": "Mat khau xac nhan khong khop"}, status=400)
+            return Response(
+                {"message": "Mat khau xac nhan khong khop"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             validate_password(body["new_password"], user=user)
         except ValidationError as exc:
-            return JsonResponse({"message": "Mat khau khong hop le", "errors": exc.messages}, status=400)
+            return Response(
+                {"message": "Mat khau khong hop le", "errors": exc.messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         user.set_password(body["new_password"])
         user.save(update_fields=["password"])
-        return JsonResponse({"message": "Doi mat khau thanh cong"})
+        return Response({"message": "Doi mat khau thanh cong"}, status=status.HTTP_200_OK)
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class HomeView(View):
+class HomeView(APIView):
     def get(self, request):
         owner = get_request_owner(request)
         homes = HomeModel.objects.filter(owner=owner).values(
@@ -358,23 +347,21 @@ class HomeView(View):
             "created_at",
             "updated_at",
         )
-        return JsonResponse(list(homes), safe=False)
+        return Response(list(homes), status=status.HTTP_200_OK)
 
     def post(self, request):
-        body = parse_json_body(request)
-        if body is None:
-            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+        body = request.data
 
         required_fields = ["name"]
         missing = missing_fields(body, required_fields)
         if missing:
-            return JsonResponse(
+            return Response(
                 {"message": "Thieu du lieu", "missing_fields": missing},
-                status=400,
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         if not body["name"]:
-            return JsonResponse({"message": "Ten nha khong duoc de trong"}, status=400)
+            return Response({"message": "Ten nha khong duoc de trong"}, status=status.HTTP_400_BAD_REQUEST)
 
         home = HomeModel.objects.create(
             owner=get_request_owner(request),
@@ -383,7 +370,7 @@ class HomeView(View):
             description=body.get("description", ""),
         )
 
-        return JsonResponse(
+        return Response(
             {
                 "message": "Them nha thanh cong",
                 "data": {
@@ -393,35 +380,32 @@ class HomeView(View):
                     "description": home.description,
                 },
             },
-            status=201,
+            status=status.HTTP_201_CREATED,
         )
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class HomeDetailView(View):
+class HomeDetailView(APIView):
     def get(self, request, home_id):
         owner = get_request_owner(request)
         try:
             home = HomeModel.objects.get(id=home_id, owner=owner)
         except HomeModel.DoesNotExist:
-            return JsonResponse({"message": "Nha khong ton tai"}, status=404)
+            return Response({"message": "Nha khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
-        return JsonResponse(home_to_dict(home))
+        return Response(home_to_dict(home), status=status.HTTP_200_OK)
 
     def patch(self, request, home_id):
-        body = parse_json_body(request)
-        if body is None:
-            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+        body = request.data
 
         owner = get_request_owner(request)
         try:
             home = HomeModel.objects.get(id=home_id, owner=owner)
         except HomeModel.DoesNotExist:
-            return JsonResponse({"message": "Nha khong ton tai"}, status=404)
+            return Response({"message": "Nha khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         if "name" in body:
             if not body["name"]:
-                return JsonResponse({"message": "Ten nha khong duoc de trong"}, status=400)
+                return Response({"message": "Ten nha khong duoc de trong"}, status=status.HTTP_400_BAD_REQUEST)
             home.name = body["name"]
         if "address" in body:
             home.address = body["address"]
@@ -429,37 +413,35 @@ class HomeDetailView(View):
             home.description = body["description"]
 
         home.save()
-        return JsonResponse({"message": "Cap nhat nha thanh cong", "data": home_to_dict(home)})
+        return Response({"message": "Cap nhat nha thanh cong", "data": home_to_dict(home)}, status=status.HTTP_200_OK)
 
     def delete(self, request, home_id):
         owner = get_request_owner(request)
         try:
             home = HomeModel.objects.get(id=home_id, owner=owner)
         except HomeModel.DoesNotExist:
-            return JsonResponse({"message": "Nha khong ton tai"}, status=404)
+            return Response({"message": "Nha khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         home.delete()
-        return JsonResponse({"message": "Xoa nha thanh cong"})
+        return Response({"message": "Xoa nha thanh cong"}, status=status.HTTP_200_OK)
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class HomeOverviewView(View):
+class HomeOverviewView(APIView):
     def get(self, request, home_id):
         owner = get_request_owner(request)
         try:
             home = HomeModel.objects.get(id=home_id, owner=owner)
         except HomeModel.DoesNotExist:
-            return JsonResponse({"message": "Nha khong ton tai"}, status=404)
+            return Response({"message": "Nha khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
-        return JsonResponse(home_overview_to_dict(home))
+        return Response(home_overview_to_dict(home), status=status.HTTP_200_OK)
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class RoomView(View):
+class RoomView(APIView):
     def get(self, request, home_id):
         owner = get_request_owner(request)
         if not HomeModel.objects.filter(id=home_id, owner=owner).exists():
-            return JsonResponse({"message": "Nha khong ton tai"}, status=404)
+            return Response({"message": "Nha khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         rooms = RoomModel.objects.filter(home_id=home_id).values(
             "id",
@@ -470,35 +452,33 @@ class RoomView(View):
             "created_at",
             "updated_at",
         )
-        return JsonResponse(list(rooms), safe=False)
+        return Response(list(rooms), status=status.HTTP_200_OK)
 
     def post(self, request, home_id):
-        body = parse_json_body(request)
-        if body is None:
-            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+        body = request.data
 
         owner = get_request_owner(request)
         if not HomeModel.objects.filter(id=home_id, owner=owner).exists():
-            return JsonResponse({"message": "Nha khong ton tai"}, status=404)
+            return Response({"message": "Nha khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         required_fields = ["name"]
         missing = missing_fields(body, required_fields)
         if missing:
-            return JsonResponse(
+            return Response(
                 {"message": "Thieu du lieu", "missing_fields": missing},
-                status=400,
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         if not body["name"]:
-            return JsonResponse({"message": "Ten phong khong duoc de trong"}, status=400)
+            return Response({"message": "Ten phong khong duoc de trong"}, status=status.HTTP_400_BAD_REQUEST)
 
         if RoomModel.objects.filter(home_id=home_id, name=body["name"]).exists():
-            return JsonResponse({"message": "Phong da ton tai trong nha nay"}, status=400)
+            return Response({"message": "Phong da ton tai trong nha nay"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             floor = int(body.get("floor", 1))
         except (TypeError, ValueError):
-            return JsonResponse({"message": "Tang phai la so nguyen"}, status=400)
+            return Response({"message": "Tang phai la so nguyen"}, status=status.HTTP_400_BAD_REQUEST)
 
         room = RoomModel.objects.create(
             home_id=home_id,
@@ -507,7 +487,7 @@ class RoomView(View):
             description=body.get("description", ""),
         )
 
-        return JsonResponse(
+        return Response(
             {
                 "message": "Them phong thanh cong",
                 "data": {
@@ -518,62 +498,58 @@ class RoomView(View):
                     "description": room.description,
                 },
             },
-            status=201,
+            status=status.HTTP_201_CREATED,
         )
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class RoomDetailView(View):
+class RoomDetailView(APIView):
     def get(self, request, home_id, room_id):
         owner = get_request_owner(request)
         try:
             room = RoomModel.objects.get(id=room_id, home_id=home_id, home__owner=owner)
         except RoomModel.DoesNotExist:
-            return JsonResponse({"message": "Phong khong ton tai"}, status=404)
+            return Response({"message": "Phong khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
-        return JsonResponse(room_to_dict(room))
+        return Response(room_to_dict(room), status=status.HTTP_200_OK)
 
     def patch(self, request, home_id, room_id):
-        body = parse_json_body(request)
-        if body is None:
-            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+        body = request.data
 
         owner = get_request_owner(request)
         try:
             room = RoomModel.objects.get(id=room_id, home_id=home_id, home__owner=owner)
         except RoomModel.DoesNotExist:
-            return JsonResponse({"message": "Phong khong ton tai"}, status=404)
+            return Response({"message": "Phong khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         if "name" in body:
             if not body["name"]:
-                return JsonResponse({"message": "Ten phong khong duoc de trong"}, status=400)
+                return Response({"message": "Ten phong khong duoc de trong"}, status=status.HTTP_400_BAD_REQUEST)
             if RoomModel.objects.filter(home_id=room.home_id, name=body["name"]).exclude(id=room.id).exists():
-                return JsonResponse({"message": "Phong da ton tai trong nha nay"}, status=400)
+                return Response({"message": "Phong da ton tai trong nha nay"}, status=status.HTTP_400_BAD_REQUEST)
             room.name = body["name"]
         if "floor" in body:
             try:
                 room.floor = int(body["floor"])
             except (TypeError, ValueError):
-                return JsonResponse({"message": "Tang phai la so nguyen"}, status=400)
+                return Response({"message": "Tang phai la so nguyen"}, status=status.HTTP_400_BAD_REQUEST)
         if "description" in body:
             room.description = body["description"]
 
         room.save()
-        return JsonResponse({"message": "Cap nhat phong thanh cong", "data": room_to_dict(room)})
+        return Response({"message": "Cap nhat phong thanh cong", "data": room_to_dict(room)}, status=status.HTTP_200_OK)
 
     def delete(self, request, home_id, room_id):
         owner = get_request_owner(request)
         try:
             room = RoomModel.objects.get(id=room_id, home_id=home_id, home__owner=owner)
         except RoomModel.DoesNotExist:
-            return JsonResponse({"message": "Phong khong ton tai"}, status=404)
+            return Response({"message": "Phong khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         room.delete()
-        return JsonResponse({"message": "Xoa phong thanh cong"})
+        return Response({"message": "Xoa phong thanh cong"}, status=status.HTTP_200_OK)
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class ESPView(View):
+class ESPView(APIView):
     def get(self, request):
         esps = ESPModel.objects.select_related("home", "room").values(
             "id",
@@ -589,31 +565,29 @@ class ESPView(View):
             "created_at",
             "updated_at",
         )
-        return JsonResponse(list(esps), safe=False)
+        return Response(list(esps), status=status.HTTP_200_OK)
 
     def post(self, request):
-        body = parse_json_body(request)
-        if body is None:
-            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+        body = request.data
 
         required_fields = ["home_id", "hashcode", "name"]
         missing = missing_fields(body, required_fields)
         if missing:
-            return JsonResponse(
+            return Response(
                 {"message": "Thieu du lieu", "missing_fields": missing},
-                status=400,
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         if not HomeModel.objects.filter(id=body["home_id"]).exists():
-            return JsonResponse({"message": "Nha khong ton tai"}, status=404)
+            return Response({"message": "Nha khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         room_id = body.get("room_id")
         if room_id is not None:
             if not RoomModel.objects.filter(id=room_id, home_id=body["home_id"]).exists():
-                return JsonResponse({"message": "Phong khong thuoc nha nay"}, status=400)
+                return Response({"message": "Phong khong thuoc nha nay"}, status=status.HTTP_400_BAD_REQUEST)
 
         if ESPModel.objects.filter(hashcode=body["hashcode"]).exists():
-            return JsonResponse({"message": "Hashcode ESP da ton tai"}, status=400)
+            return Response({"message": "Hashcode ESP da ton tai"}, status=status.HTTP_400_BAD_REQUEST)
 
         esp = ESPModel.objects.create(
             home_id=body["home_id"],
@@ -623,7 +597,7 @@ class ESPView(View):
             is_sensor=bool(body.get("is_sensor", False)),
         )
 
-        return JsonResponse(
+        return Response(
             {
                 "message": "Them ESP thanh cong",
                 "data": {
@@ -636,41 +610,38 @@ class ESPView(View):
                     "status": esp.status,
                 },
             },
-            status=201,
+            status=status.HTTP_201_CREATED,
         )
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class ESPDetailView(View):
+class ESPDetailView(APIView):
     def get(self, request, hashcode):
         try:
             esp = ESPModel.objects.get(hashcode=hashcode)
         except ESPModel.DoesNotExist:
-            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+            return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
-        return JsonResponse(esp_to_dict(esp))
+        return Response(esp_to_dict(esp), status=status.HTTP_200_OK)
 
     def patch(self, request, hashcode):
-        body = parse_json_body(request)
-        if body is None:
-            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+        body = request.data
 
         try:
             esp = ESPModel.objects.get(hashcode=hashcode)
         except ESPModel.DoesNotExist:
-            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+            return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         if "name" in body:
             esp.esp_name = body["name"]
 
         if "is_sensor" in body:
             if not isinstance(body["is_sensor"], bool):
-                return JsonResponse({"message": "is_sensor phai la true hoac false"}, status=400)
+                return Response({"message": "is_sensor phai la true hoac false"}, status=status.HTTP_400_BAD_REQUEST)
             esp.is_sensor = body["is_sensor"]
 
         if "home_id" in body:
             if not HomeModel.objects.filter(id=body["home_id"]).exists():
-                return JsonResponse({"message": "Nha khong ton tai"}, status=404)
+                return Response({"message": "Nha khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
             esp.home_id = body["home_id"]
 
             if esp.room_id and not RoomModel.objects.filter(id=esp.room_id, home_id=esp.home_id).exists():
@@ -682,147 +653,140 @@ class ESPDetailView(View):
                 esp.room_id = None
             else:
                 if not RoomModel.objects.filter(id=room_id, home_id=esp.home_id).exists():
-                    return JsonResponse({"message": "Phong khong thuoc nha nay"}, status=400)
+                    return Response({"message": "Phong khong thuoc nha nay"}, status=status.HTTP_400_BAD_REQUEST)
                 esp.room_id = room_id
 
         esp.save()
-        return JsonResponse({"message": "Cap nhat ESP thanh cong", "data": esp_to_dict(esp)})
+        return Response({"message": "Cap nhat ESP thanh cong", "data": esp_to_dict(esp)}, status=status.HTTP_200_OK)
 
     def delete(self, request, hashcode):
         try:
             esp = ESPModel.objects.get(hashcode=hashcode)
         except ESPModel.DoesNotExist:
-            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+            return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         esp.delete()
-        return JsonResponse({"message": "Xoa ESP thanh cong"})
+        return Response({"message": "Xoa ESP thanh cong"}, status=status.HTTP_200_OK)
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class ESPMQTTMessageView(View):
+class ESPMQTTMessageView(APIView):
     def get(self, request, hashcode):
         try:
             esp = ESPModel.objects.get(hashcode=hashcode)
         except ESPModel.DoesNotExist:
-            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+            return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         messages = MQTTMessageModel.objects.filter(device=esp)
-        return JsonResponse(
+        return Response(
             [mqtt_message_to_dict(message) for message in messages],
-            safe=False,
+            status=status.HTTP_200_OK,
         )
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class ESPSensorLatestView(View):
+class ESPSensorLatestView(APIView):
     def get(self, request, hashcode):
         try:
             esp = ESPModel.objects.get(hashcode=hashcode)
         except ESPModel.DoesNotExist:
-            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+            return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         reading = SensorReadingModel.objects.filter(device=esp).first()
         if reading is None:
-            return JsonResponse({"message": "Chua co du lieu sensor"}, status=404)
+            return Response({"message": "Chua co du lieu sensor"}, status=status.HTTP_404_NOT_FOUND)
 
-        return JsonResponse(sensor_reading_to_dict(reading))
+        return Response(sensor_reading_to_dict(reading), status=status.HTTP_200_OK)
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class ESPSensorHistoryView(View):
+class ESPSensorHistoryView(APIView):
     def get(self, request, hashcode):
         try:
             esp = ESPModel.objects.get(hashcode=hashcode)
         except ESPModel.DoesNotExist:
-            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+            return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         limit = int(request.GET.get("limit", 30))
         readings = SensorReadingModel.objects.filter(device=esp)[:limit]
-        return JsonResponse([sensor_reading_to_dict(reading) for reading in readings], safe=False)
+        return Response([sensor_reading_to_dict(reading) for reading in readings], status=status.HTTP_200_OK)
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class DebugMQTTInboundView(View):
+class DebugMQTTInboundView(APIView):
     def post(self, request):
-        body = parse_json_body(request)
-        if body is None:
-            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+        body = request.data
 
         missing = missing_fields(body, ["topic", "payload"])
         if missing:
-            return JsonResponse({"message": "Thieu du lieu", "missing_fields": missing}, status=400)
+            return Response(
+                {"message": "Thieu du lieu", "missing_fields": missing},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if not isinstance(body["payload"], dict):
-            return JsonResponse({"message": "payload phai la JSON object"}, status=400)
+            return Response({"message": "payload phai la JSON object"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             mqtt_log = handle_inbound_message(body["topic"], json.dumps(body["payload"]))
         except Exception as exc:
-            return JsonResponse({"message": "Xu ly MQTT inbound that bai", "error": str(exc)}, status=400)
+            return Response(
+                {"message": "Xu ly MQTT inbound that bai", "error": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        return JsonResponse(
+        return Response(
             {
                 "message": "Xu ly MQTT inbound thanh cong",
                 "data": mqtt_message_to_dict(mqtt_log),
             },
-            status=201,
+            status=status.HTTP_201_CREATED,
         )
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class SwitchView(View):
+class SwitchView(APIView):
     def get(self, request, hashcode):
         try:
             esp = ESPModel.objects.get(hashcode=hashcode)
         except ESPModel.DoesNotExist:
-            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+            return Response({"message": "ESP khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         switches = SwitchModel.objects.filter(esp_device=esp)
-        return JsonResponse([switch_to_dict(switch) for switch in switches], safe=False)
+        return Response([switch_to_dict(switch) for switch in switches], status=status.HTTP_200_OK)
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class SwitchDetailView(View):
+class SwitchDetailView(APIView):
     def get(self, request, hashcode, switch_code):
         try:
             switch = SwitchModel.objects.get(switch_code=switch_code, esp_device__hashcode=hashcode)
         except SwitchModel.DoesNotExist:
-            return JsonResponse({"message": "Switch khong ton tai"}, status=404)
+            return Response({"message": "Switch khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
-        return JsonResponse(switch_to_dict(switch))
+        return Response(switch_to_dict(switch), status=status.HTTP_200_OK)
 
     def patch(self, request, hashcode, switch_code):
-        body = parse_json_body(request)
-        if body is None:
-            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+        body = request.data
 
         try:
             switch = SwitchModel.objects.get(switch_code=switch_code, esp_device__hashcode=hashcode)
         except SwitchModel.DoesNotExist:
-            return JsonResponse({"message": "Switch khong ton tai"}, status=404)
+            return Response({"message": "Switch khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         if set(body) != {"switch_name"}:
-            return JsonResponse({"message": "Chi duoc phep cap nhat switch_name"}, status=400)
+            return Response({"message": "Chi duoc phep cap nhat switch_name"}, status=status.HTTP_400_BAD_REQUEST)
 
         switch.switch_name = body["switch_name"]
         switch.save(update_fields=["switch_name", "updated_at"])
-        return JsonResponse({"message": "Cap nhat switch thanh cong", "data": switch_to_dict(switch)})
+        return Response({"message": "Cap nhat switch thanh cong", "data": switch_to_dict(switch)}, status=status.HTTP_200_OK)
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class SwitchControlView(View):
+class SwitchControlView(APIView):
     def post(self, request, hashcode, switch_code):
-        body = parse_json_body(request)
-        if body is None:
-            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+        body = request.data
 
         if set(body) != {"state"}:
-            return JsonResponse({"message": "Payload chi chap nhan field state"}, status=400)
+            return Response({"message": "Payload chi chap nhan field state"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             state = normalize_state(body["state"])
         except MQTTServiceError as exc:
-            return JsonResponse({"message": str(exc)}, status=400)
+            return Response({"message": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             switch = SwitchModel.objects.select_related("esp_device").get(
@@ -830,7 +794,7 @@ class SwitchControlView(View):
                 esp_device__hashcode=hashcode,
             )
         except SwitchModel.DoesNotExist:
-            return JsonResponse({"message": "Switch khong ton tai"}, status=404)
+            return Response({"message": "Switch khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         command = DeviceCommandModel.objects.create(
             esp=switch.esp_device,
@@ -852,12 +816,12 @@ class SwitchControlView(View):
             command.status = DeviceCommandModel.CommandStatus.FAILED
             command.error_message = str(exc)
             command.save(update_fields=["status", "error_message"])
-            return JsonResponse(
+            return Response(
                 {
                     "message": "Publish MQTT that bai",
                     "data": command_to_dict(command),
                 },
-                status=502,
+                status=status.HTTP_502_BAD_GATEWAY,
             )
 
         command.status = DeviceCommandModel.CommandStatus.PUBLISHED
@@ -869,7 +833,7 @@ class SwitchControlView(View):
         switch.last_controlled_at = timezone.now()
         switch.save(update_fields=["desired_state", "sync_status", "last_controlled_at", "updated_at"])
 
-        return JsonResponse(
+        return Response(
             {
                 "message": "Gui lenh dieu khien thanh cong",
                 "data": {
@@ -878,12 +842,11 @@ class SwitchControlView(View):
                     "mqtt": publish_result,
                 },
             },
-            status=201,
+            status=status.HTTP_201_CREATED,
         )
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class SwitchCommandView(View):
+class SwitchCommandView(APIView):
     def get(self, request, hashcode, switch_code):
         try:
             switch = SwitchModel.objects.get(
@@ -891,15 +854,10 @@ class SwitchCommandView(View):
                 esp_device__hashcode=hashcode,
             )
         except SwitchModel.DoesNotExist:
-            return JsonResponse({"message": "Switch khong ton tai"}, status=404)
+            return Response({"message": "Switch khong ton tai"}, status=status.HTTP_404_NOT_FOUND)
 
         commands = DeviceCommandModel.objects.filter(
             esp=switch.esp_device,
             switch=switch,
         )
-        return JsonResponse([command_to_dict(command) for command in commands], safe=False)
-
-
-api_homes = HomeView.as_view()
-api_rooms = RoomView.as_view()
-api_esps = ESPView.as_view()
+        return Response([command_to_dict(command) for command in commands], status=status.HTTP_200_OK)

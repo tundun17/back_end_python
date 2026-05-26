@@ -226,18 +226,71 @@ TEMPERATURE_THRESHOLD=45
 ESP_OFFLINE_TIMEOUT_MINUTES=10
 ```
 
-## Kiem thu khong can ESP
+## Luong hoat dong hien tai
 
-1. Tao `ESP` va `Switch` trong Django Admin.
-2. Chay:
+### 1. User dang ky va dang nhap
 
-```bash
-python manage.py mqtt_worker
+User tao tai khoan bang API:
+
+```text
+POST /api/auth/register/
 ```
 
-3. Publish bang HiveMQ Web Client hoac MQTTX.
+Sau do dang nhap:
 
-Topic:
+```text
+POST /api/auth/login/
+```
+
+Backend tra ve JWT token gom `access` va `refresh`. Khi goi API can user, client gui them header:
+
+```text
+Authorization: Bearer <access_token>
+```
+
+Vi du xem thong tin user hien tai:
+
+```text
+GET /api/users/me/
+```
+
+### 2. Tao cau truc nha, phong va ESP
+
+User tao nha:
+
+```text
+POST /api/homes/
+```
+
+Tao phong trong nha:
+
+```text
+POST /api/homes/{home_id}/rooms/
+```
+
+Tao ESP truoc trong backend:
+
+```text
+POST /api/esps/
+```
+
+Vi du ESP dieu khien switch:
+
+```json
+{
+  "home_id": 1,
+  "room_id": 1,
+  "hashcode": "ESP_CONTROL_DEMO",
+  "name": "ESP phong khach",
+  "is_sensor": false
+}
+```
+
+Luc nay backend da biet ESP nao hop le. Khi ESP that gui MQTT `syn`, backend se kiem tra `hashcode` co ton tai hay khong.
+
+### 3. ESP ket noi MQTT va dong bo ban dau
+
+Khi ESP ket noi HiveMQ, firmware gui `syn`:
 
 ```text
 syn
@@ -247,7 +300,7 @@ Payload:
 
 ```json
 {
-  "hashcode": "ESP_ABC123",
+  "hashcode": "ESP_CONTROL_DEMO",
   "ip_address": "192.168.1.50",
   "firmware_version": "1.0.0",
   "is_sensor": false,
@@ -255,45 +308,145 @@ Payload:
 }
 ```
 
-Topic:
+Backend xu ly:
 
-```text
-ESP_ABC123/sensor
-```
+- Kiem tra `hashcode`.
+- Cap nhat ESP thanh `ONLINE`.
+- Luu `ip_address`, `firmware_version`, `last_seen_at`.
+- Neu `is_sensor = false`, tu tao switch theo `num_switches`: `device_1`, `device_2`, ...
+- Gui ACK xuong topic `{hashcode}/ack`.
 
-Payload:
+Payload ACK:
 
 ```json
 {
-  "temperature": 50,
-  "humidity": 70,
-  "gas": 900
+  "hashcode": "ESP_CONTROL_DEMO",
+  "ack": "OK"
 }
 ```
 
-Topic:
+Khi ESP nhan duoc ACK OK, ESP bat dau hoat dong binh thuong.
+
+### 4. Dieu khien switch tu API
+
+Frontend hoac Postman goi:
 
 ```text
-ESP_ABC123/state
+POST /api/esps/{hashcode}/switches/{switch_code}/control/
 ```
 
 Payload:
 
 ```json
 {
-  "switch_code": "SWITCH_01",
+  "state": "ON"
+}
+```
+
+Backend se:
+
+- Tim ESP va switch.
+- Tao `DeviceCommand`.
+- Publish MQTT xuong topic `{hashcode}/set`.
+- Cap nhat switch thanh `desired_state = ON`, `sync_status = PENDING`.
+
+Payload MQTT gui xuong ESP:
+
+```json
+{
+  "command_id": 1,
+  "command_type": "SET_DEVICE_STATE",
+  "switch_code": "device_1",
+  "state": "ON"
+}
+```
+
+ESP nhan lenh, bat/tat relay that, roi gui state nguoc lai:
+
+```text
+{hashcode}/state
+```
+
+Payload:
+
+```json
+{
+  "command_id": 1,
+  "switch_code": "device_1",
   "actual_state": "ON",
   "success": true
 }
 ```
 
-Ket qua mong muon:
+Backend cap nhat:
 
-- `ESP.status = ONLINE`
-- Tao `SensorReading`
-- Tao `Alert` neu vuot nguong
 - `Switch.actual_state = ON`
-- Co log trong `MQTTMessage`
+- `Switch.desired_state = ON`
+- `Switch.sync_status = SYNCED`
+- `DeviceCommand.status = DONE`
+
+Neu user bam cong tac vat ly, ESP van gui state len MQTT nhung co the khong co `command_id`. Khi do backend cap nhat ca `actual_state` va `desired_state` theo trang thai that de tranh lech du lieu.
+
+### 5. ESP sensor gui du lieu
+
+ESP sensor gui len topic:
+
+```text
+{hashcode}/sensor
+```
+
+Payload:
+
+```json
+{
+  "temperature": 31.5,
+  "humidity": 70,
+  "gas": 420
+}
+```
+
+Backend se:
+
+- Luu vao `SensorReading`.
+- Cap nhat `last_seen_at` cua ESP.
+- Tao `Alert` neu gas hoac nhiet do vuot nguong cau hinh.
+
+Frontend co the doc du lieu sensor qua:
+
+```text
+GET /api/esps/{hashcode}/sensor-readings/latest/
+GET /api/esps/{hashcode}/sensor-readings/history/
+```
+
+### 6. Dashboard doc du lieu tong quan
+
+Dashboard goi:
+
+```text
+GET /api/dashboard/homes/{home_id}/overview/
+```
+
+API nay gom so lieu:
+
+- Tong so phong.
+- Tong so ESP.
+- ESP online/offline/unclaimed/error.
+- So ESP sensor/controller.
+- So switch ON/OFF.
+- So switch `PENDING`, `FAILED`, `SYNCED`.
+- So alert dang ton tai.
+
+Dashboard co the goi them cac API rooms, esps, switches, sensor readings va mqtt messages de hien thi chi tiet.
+
+### 7. Health check danh dau ESP offline
+
+Neu ESP khong gui MQTT len backend qua thoi gian cau hinh, chay:
+
+```bash
+python manage.py health_check
+```
+
+Mac dinh neu ESP dang `ONLINE` nhung qua 10 phut khong cap nhat `last_seen_at`, backend chuyen ESP do sang `OFFLINE`.
 
 ## Chuc nang noi bat
 

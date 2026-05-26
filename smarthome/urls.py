@@ -1,4 +1,6 @@
 from django.urls import path
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
 
 from .views import (
     DebugMQTTInboundView,
@@ -10,7 +12,6 @@ from .views import (
     HomeDetailView,
     HomeOverviewView,
     HomeView,
-    LoginView,
     LogoutView,
     RegisterView,
     RoomDetailView,
@@ -28,7 +29,8 @@ from .views import (
 urlpatterns = [
     path("", index, name="smarthome_index"),
     path("auth/register/", RegisterView.as_view(), name="auth_register_views"),
-    path("auth/login/", LoginView.as_view(), name="auth_login_views"),
+    path("auth/login/", TokenObtainPairView.as_view(), name="auth_login_views"),
+    path("auth/refresh/", TokenRefreshView.as_view(), name="auth_refresh_views"),
     path("auth/logout/", LogoutView.as_view(), name="auth_logout_views"),
     path("users/me/", UserMeView.as_view(), name="user_me_views"),
     path("users/change-password/", ChangePasswordView.as_view(), name="user_change_password_views"),
