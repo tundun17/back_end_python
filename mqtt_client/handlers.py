@@ -301,8 +301,33 @@ def handle_state(topic: str, payload: dict):
 
         if switch is not None:
             switch.actual_state = actual_state
-            switch.sync_status = "SYNCED" if success else "FAILED"
-            switch.save(update_fields=["actual_state", "sync_status", "updated_at"])
+
+            if command_id:
+                switch.sync_status = "SYNCED" if success else "FAILED"
+
+                if success:
+                    switch.desired_state = actual_state
+                    switch.save(
+                        update_fields=[
+                            "desired_state",
+                            "actual_state",
+                            "sync_status",
+                            "updated_at",
+                        ]
+                    )
+                else:
+                    switch.save(update_fields=["actual_state", "sync_status", "updated_at"])
+            else:
+                switch.desired_state = actual_state
+                switch.sync_status = "SYNCED" if success else "FAILED"
+                switch.save(
+                    update_fields=[
+                        "desired_state",
+                        "actual_state",
+                        "sync_status",
+                        "updated_at",
+                    ]
+                )
 
     Command = get_command_model()
     if Command is not None and command_id:

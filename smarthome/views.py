@@ -7,14 +7,17 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
+from mqtt_client.handlers import handle_inbound_message
 from mqtt_client.client import MQTTClientError
 from mqtt_client.services import MQTTServiceError, normalize_state, publish_control_command
 
+from .models import Alert as AlertModel
 from .models import DeviceCommand as DeviceCommandModel
 from .models import ESP as ESPModel
 from .models import Home as HomeModel
 from .models import MQTTMessage as MQTTMessageModel
 from .models import Room as RoomModel
+from .models import SensorReading as SensorReadingModel
 from .models import Switch as SwitchModel
 
 
@@ -127,6 +130,60 @@ def mqtt_message_to_dict(message):
     }
 
 
+def sensor_reading_to_dict(reading):
+    return {
+        "id": reading.id,
+        "device_id": reading.device_id,
+        "temperature": reading.temperature,
+        "humidity": reading.humidity,
+        "gas": reading.gas,
+        "recorded_at": reading.recorded_at,
+        "created_at": reading.created_at,
+    }
+
+
+def home_overview_to_dict(home):
+    esps = ESPModel.objects.filter(home=home)
+    switches = SwitchModel.objects.filter(esp_device__home=home)
+    alerts = AlertModel.objects.filter(device__home=home)
+
+    return {
+        "home": {
+            "id": home.id,
+            "name": home.name,
+            "address": home.address,
+        },
+        "rooms": {
+            "total": RoomModel.objects.filter(home=home).count(),
+        },
+        "esps": {
+            "total": esps.count(),
+            "online": esps.filter(status=ESPModel.Status.ONLINE).count(),
+            "offline": esps.filter(status=ESPModel.Status.OFFLINE).count(),
+            "unclaimed": esps.filter(status=ESPModel.Status.UNCLAIMED).count(),
+            "error": esps.filter(status=ESPModel.Status.ERROR).count(),
+            "sensors": esps.filter(is_sensor=True).count(),
+            "controllers": esps.filter(is_sensor=False).count(),
+        },
+        "switches": {
+            "total": switches.count(),
+            "on": switches.filter(actual_state=SwitchModel.State.ON).count(),
+            "off": switches.filter(actual_state=SwitchModel.State.OFF).count(),
+            "pending": switches.filter(sync_status=SwitchModel.SyncStatus.PENDING).count(),
+            "failed": switches.filter(sync_status=SwitchModel.SyncStatus.FAILED).count(),
+            "synced": switches.filter(sync_status=SwitchModel.SyncStatus.SYNCED).count(),
+        },
+        "alerts": {
+            "total": alerts.count(),
+            "unresolved": alerts.filter(is_resolved=False).count(),
+            "resolved": alerts.filter(is_resolved=True).count(),
+            "critical": alerts.filter(severity=AlertModel.Severity.CRITICAL, is_resolved=False).count(),
+            "high": alerts.filter(severity=AlertModel.Severity.HIGH, is_resolved=False).count(),
+        },
+        "updated_at": timezone.now(),
+    }
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class HomeView(View):
     def get(self, request):
@@ -206,6 +263,17 @@ class HomeDetailView(View):
 
         home.save()
         return JsonResponse({"message": "Cap nhat nha thanh cong", "data": home_to_dict(home)})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class HomeOverviewView(View):
+    def get(self, request, home_id):
+        try:
+            home = HomeModel.objects.get(id=home_id)
+        except HomeModel.DoesNotExist:
+            return JsonResponse({"message": "Nha khong ton tai"}, status=404)
+
+        return JsonResponse(home_overview_to_dict(home))
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -437,6 +505,62 @@ class ESPMQTTMessageView(View):
         return JsonResponse(
             [mqtt_message_to_dict(message) for message in messages],
             safe=False,
+        )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ESPSensorLatestView(View):
+    def get(self, request, hashcode):
+        try:
+            esp = ESPModel.objects.get(hashcode=hashcode)
+        except ESPModel.DoesNotExist:
+            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+
+        reading = SensorReadingModel.objects.filter(device=esp).first()
+        if reading is None:
+            return JsonResponse({"message": "Chua co du lieu sensor"}, status=404)
+
+        return JsonResponse(sensor_reading_to_dict(reading))
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ESPSensorHistoryView(View):
+    def get(self, request, hashcode):
+        try:
+            esp = ESPModel.objects.get(hashcode=hashcode)
+        except ESPModel.DoesNotExist:
+            return JsonResponse({"message": "ESP khong ton tai"}, status=404)
+
+        limit = int(request.GET.get("limit", 30))
+        readings = SensorReadingModel.objects.filter(device=esp)[:limit]
+        return JsonResponse([sensor_reading_to_dict(reading) for reading in readings], safe=False)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class DebugMQTTInboundView(View):
+    def post(self, request):
+        body = parse_json_body(request)
+        if body is None:
+            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+
+        missing = missing_fields(body, ["topic", "payload"])
+        if missing:
+            return JsonResponse({"message": "Thieu du lieu", "missing_fields": missing}, status=400)
+
+        if not isinstance(body["payload"], dict):
+            return JsonResponse({"message": "payload phai la JSON object"}, status=400)
+
+        try:
+            mqtt_log = handle_inbound_message(body["topic"], json.dumps(body["payload"]))
+        except Exception as exc:
+            return JsonResponse({"message": "Xu ly MQTT inbound that bai", "error": str(exc)}, status=400)
+
+        return JsonResponse(
+            {
+                "message": "Xu ly MQTT inbound thanh cong",
+                "data": mqtt_message_to_dict(mqtt_log),
+            },
+            status=201,
         )
 
 

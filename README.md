@@ -169,9 +169,7 @@ GET   /api/sensor-readings/
 GET   /api/alerts/
 GET   /api/alerts/{id}/
 PATCH /api/alerts/{id}/resolve/
-GET   /api/dashboard/overview/
-GET   /api/dashboard/homes/{id}/overview/
-GET   /api/dashboard/homes/{id}/analytics/
+GET   /api/dashboard/homes/{home_id}/overview/
 ```
 
 ### Debug MQTT
