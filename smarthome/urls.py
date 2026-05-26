@@ -10,18 +10,29 @@ from .views import (
     HomeDetailView,
     HomeOverviewView,
     HomeView,
+    LoginView,
+    LogoutView,
+    RegisterView,
     RoomDetailView,
     RoomView,
     SwitchCommandView,
     SwitchControlView,
     SwitchDetailView,
     SwitchView,
+    ChangePasswordView,
+    UserMeView,
     index,
 )
 
 
 urlpatterns = [
     path("", index, name="smarthome_index"),
+    path("auth/register/", RegisterView.as_view(), name="auth_register_views"),
+    path("auth/login/", LoginView.as_view(), name="auth_login_views"),
+    path("auth/logout/", LogoutView.as_view(), name="auth_logout_views"),
+    path("users/me/", UserMeView.as_view(), name="user_me_views"),
+    path("users/change-password/", ChangePasswordView.as_view(), name="user_change_password_views"),
+
     path("homes/", HomeView.as_view(), name="home_views"),
     path("homes/<int:home_id>/", HomeDetailView.as_view(), name="home_detail_views"),
     path("dashboard/homes/<int:home_id>/overview/", HomeOverviewView.as_view(), name="home_overview_views"),

@@ -1,6 +1,8 @@
 import json
 
-from django.contrib.auth import get_user_model
+from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -43,6 +45,17 @@ def parse_json_body(request):
 
 def missing_fields(body, required_fields):
     return [field for field in required_fields if field not in body]
+
+
+def user_to_dict(user):
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "date_joined": user.date_joined,
+    }
 
 
 def home_to_dict(home):
@@ -185,6 +198,155 @@ def home_overview_to_dict(home):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
+class RegisterView(View):
+    def post(self, request):
+        body = parse_json_body(request)
+        if body is None:
+            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+
+        required_fields = ["username", "password", "password_confirm"]
+        missing = missing_fields(body, required_fields)
+        if missing:
+            return JsonResponse(
+                {"message": "Thieu du lieu", "missing_fields": missing},
+                status=400,
+            )
+
+        username = body["username"]
+        email = body.get("email", "")
+        password = body["password"]
+        password_confirm = body["password_confirm"]
+        first_name = body.get("first_name", "")
+        last_name = body.get("last_name", "")
+
+        if password != password_confirm:
+            return JsonResponse({"message": "Mat khau xac nhan khong khop"}, status=400)
+
+        User = get_user_model()
+        if User.objects.filter(username=username).exists():
+            return JsonResponse({"message": "Username da ton tai"}, status=400)
+
+        if email and User.objects.filter(email=email).exists():
+            return JsonResponse({"message": "Email da ton tai"}, status=400)
+
+        try:
+            validate_password(password)
+        except ValidationError as exc:
+            return JsonResponse({"message": "Mat khau khong hop le", "errors": exc.messages}, status=400)
+
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            first_name=first_name,
+            last_name=last_name,
+        )
+
+        return JsonResponse(
+            {"message": "Dang ky tai khoan thanh cong", "data": user_to_dict(user)},
+            status=201,
+        )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class LoginView(View):
+    def post(self, request):
+        body = parse_json_body(request)
+        if body is None:
+            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+
+        missing = missing_fields(body, ["username", "password"])
+        if missing:
+            return JsonResponse(
+                {"message": "Thieu du lieu", "missing_fields": missing},
+                status=400,
+            )
+
+        user = authenticate(request, username=body["username"], password=body["password"])
+        if user is None:
+            return JsonResponse({"message": "Username hoac mat khau khong dung"}, status=400)
+
+        login(request, user)
+        return JsonResponse({"message": "Dang nhap thanh cong", "data": user_to_dict(user)})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class LogoutView(View):
+    def post(self, request):
+        logout(request)
+        return JsonResponse({"message": "Dang xuat thanh cong"})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class UserMeView(View):
+    def get(self, request):
+        if not request.user.is_authenticated:
+            return JsonResponse({"message": "Ban chua dang nhap"}, status=401)
+
+        return JsonResponse(user_to_dict(request.user))
+
+    def patch(self, request):
+        if not request.user.is_authenticated:
+            return JsonResponse({"message": "Ban chua dang nhap"}, status=401)
+
+        body = parse_json_body(request)
+        if body is None:
+            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+
+        user = request.user
+        email = body.get("email", user.email)
+
+        User = get_user_model()
+        if email and User.objects.exclude(id=user.id).filter(email=email).exists():
+            return JsonResponse({"message": "Email da duoc su dung"}, status=400)
+
+        if "email" in body:
+            user.email = email
+        if "first_name" in body:
+            user.first_name = body["first_name"]
+        if "last_name" in body:
+            user.last_name = body["last_name"]
+
+        user.save(update_fields=["email", "first_name", "last_name"])
+        return JsonResponse({"message": "Cap nhat user thanh cong", "data": user_to_dict(user)})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ChangePasswordView(View):
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return JsonResponse({"message": "Ban chua dang nhap"}, status=401)
+
+        body = parse_json_body(request)
+        if body is None:
+            return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
+
+        required_fields = ["old_password", "new_password", "new_password_confirm"]
+        missing = missing_fields(body, required_fields)
+        if missing:
+            return JsonResponse(
+                {"message": "Thieu du lieu", "missing_fields": missing},
+                status=400,
+            )
+
+        user = request.user
+        if not user.check_password(body["old_password"]):
+            return JsonResponse({"message": "Mat khau cu khong dung"}, status=400)
+
+        if body["new_password"] != body["new_password_confirm"]:
+            return JsonResponse({"message": "Mat khau xac nhan khong khop"}, status=400)
+
+        try:
+            validate_password(body["new_password"], user=user)
+        except ValidationError as exc:
+            return JsonResponse({"message": "Mat khau khong hop le", "errors": exc.messages}, status=400)
+
+        user.set_password(body["new_password"])
+        user.save(update_fields=["password"])
+        return JsonResponse({"message": "Doi mat khau thanh cong"})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
 class HomeView(View):
     def get(self, request):
         owner = get_request_owner(request)
@@ -210,6 +372,9 @@ class HomeView(View):
                 {"message": "Thieu du lieu", "missing_fields": missing},
                 status=400,
             )
+
+        if not body["name"]:
+            return JsonResponse({"message": "Ten nha khong duoc de trong"}, status=400)
 
         home = HomeModel.objects.create(
             owner=get_request_owner(request),
@@ -255,6 +420,8 @@ class HomeDetailView(View):
             return JsonResponse({"message": "Nha khong ton tai"}, status=404)
 
         if "name" in body:
+            if not body["name"]:
+                return JsonResponse({"message": "Ten nha khong duoc de trong"}, status=400)
             home.name = body["name"]
         if "address" in body:
             home.address = body["address"]
@@ -264,12 +431,23 @@ class HomeDetailView(View):
         home.save()
         return JsonResponse({"message": "Cap nhat nha thanh cong", "data": home_to_dict(home)})
 
+    def delete(self, request, home_id):
+        owner = get_request_owner(request)
+        try:
+            home = HomeModel.objects.get(id=home_id, owner=owner)
+        except HomeModel.DoesNotExist:
+            return JsonResponse({"message": "Nha khong ton tai"}, status=404)
+
+        home.delete()
+        return JsonResponse({"message": "Xoa nha thanh cong"})
+
 
 @method_decorator(csrf_exempt, name="dispatch")
 class HomeOverviewView(View):
     def get(self, request, home_id):
+        owner = get_request_owner(request)
         try:
-            home = HomeModel.objects.get(id=home_id)
+            home = HomeModel.objects.get(id=home_id, owner=owner)
         except HomeModel.DoesNotExist:
             return JsonResponse({"message": "Nha khong ton tai"}, status=404)
 
@@ -279,7 +457,8 @@ class HomeOverviewView(View):
 @method_decorator(csrf_exempt, name="dispatch")
 class RoomView(View):
     def get(self, request, home_id):
-        if not HomeModel.objects.filter(id=home_id).exists():
+        owner = get_request_owner(request)
+        if not HomeModel.objects.filter(id=home_id, owner=owner).exists():
             return JsonResponse({"message": "Nha khong ton tai"}, status=404)
 
         rooms = RoomModel.objects.filter(home_id=home_id).values(
@@ -298,7 +477,8 @@ class RoomView(View):
         if body is None:
             return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
 
-        if not HomeModel.objects.filter(id=home_id).exists():
+        owner = get_request_owner(request)
+        if not HomeModel.objects.filter(id=home_id, owner=owner).exists():
             return JsonResponse({"message": "Nha khong ton tai"}, status=404)
 
         required_fields = ["name"]
@@ -309,13 +489,21 @@ class RoomView(View):
                 status=400,
             )
 
+        if not body["name"]:
+            return JsonResponse({"message": "Ten phong khong duoc de trong"}, status=400)
+
         if RoomModel.objects.filter(home_id=home_id, name=body["name"]).exists():
             return JsonResponse({"message": "Phong da ton tai trong nha nay"}, status=400)
+
+        try:
+            floor = int(body.get("floor", 1))
+        except (TypeError, ValueError):
+            return JsonResponse({"message": "Tang phai la so nguyen"}, status=400)
 
         room = RoomModel.objects.create(
             home_id=home_id,
             name=body["name"],
-            floor=body.get("floor", 1),
+            floor=floor,
             description=body.get("description", ""),
         )
 
@@ -337,8 +525,9 @@ class RoomView(View):
 @method_decorator(csrf_exempt, name="dispatch")
 class RoomDetailView(View):
     def get(self, request, home_id, room_id):
+        owner = get_request_owner(request)
         try:
-            room = RoomModel.objects.get(id=room_id, home_id=home_id)
+            room = RoomModel.objects.get(id=room_id, home_id=home_id, home__owner=owner)
         except RoomModel.DoesNotExist:
             return JsonResponse({"message": "Phong khong ton tai"}, status=404)
 
@@ -349,22 +538,38 @@ class RoomDetailView(View):
         if body is None:
             return JsonResponse({"message": "Du lieu JSON khong hop le"}, status=400)
 
+        owner = get_request_owner(request)
         try:
-            room = RoomModel.objects.get(id=room_id, home_id=home_id)
+            room = RoomModel.objects.get(id=room_id, home_id=home_id, home__owner=owner)
         except RoomModel.DoesNotExist:
             return JsonResponse({"message": "Phong khong ton tai"}, status=404)
 
         if "name" in body:
+            if not body["name"]:
+                return JsonResponse({"message": "Ten phong khong duoc de trong"}, status=400)
             if RoomModel.objects.filter(home_id=room.home_id, name=body["name"]).exclude(id=room.id).exists():
                 return JsonResponse({"message": "Phong da ton tai trong nha nay"}, status=400)
             room.name = body["name"]
         if "floor" in body:
-            room.floor = body["floor"]
+            try:
+                room.floor = int(body["floor"])
+            except (TypeError, ValueError):
+                return JsonResponse({"message": "Tang phai la so nguyen"}, status=400)
         if "description" in body:
             room.description = body["description"]
 
         room.save()
         return JsonResponse({"message": "Cap nhat phong thanh cong", "data": room_to_dict(room)})
+
+    def delete(self, request, home_id, room_id):
+        owner = get_request_owner(request)
+        try:
+            room = RoomModel.objects.get(id=room_id, home_id=home_id, home__owner=owner)
+        except RoomModel.DoesNotExist:
+            return JsonResponse({"message": "Phong khong ton tai"}, status=404)
+
+        room.delete()
+        return JsonResponse({"message": "Xoa phong thanh cong"})
 
 
 @method_decorator(csrf_exempt, name="dispatch")
