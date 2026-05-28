@@ -1,8 +1,8 @@
 from django.contrib import admin
 
 from .models import (
-    ActivityLog,
     Alert,
+    AutomationRule,
     DeviceCommand,
     ESP,
     Home,
@@ -81,10 +81,23 @@ class AlertAdmin(admin.ModelAdmin):
     search_fields = ("device__hashcode", "message")
 
 
-@admin.register(ActivityLog)
-class ActivityLogAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "device", "action", "created_at")
-    search_fields = ("user__username", "device__hashcode", "action", "description")
+@admin.register(AutomationRule)
+class AutomationRuleAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "sensor_device",
+        "alert_type",
+        "target_switch",
+        "enabled",
+        "active_state",
+        "normal_state",
+    )
+    list_filter = ("enabled", "alert_type", "active_state", "normal_state")
+    search_fields = (
+        "sensor_device__hashcode",
+        "target_switch__switch_code",
+        "target_switch__esp_device__hashcode",
+    )
 
 
 @admin.register(MQTTMessage)

@@ -230,6 +230,15 @@ def handle_sensor(topic: str, payload: dict):
         device=esp,
         reading=reading,
         temperature=temperature,
+        humidity=humidity,
+        gas=gas,
+    )
+
+    run_automation_rules(
+        device=esp,
+        reading=reading,
+        temperature=temperature,
+        humidity=humidity,
         gas=gas,
     )
 
@@ -238,6 +247,7 @@ def create_alerts_if_needed(
     device,
     reading,
     temperature: float,
+    humidity: float,
     gas: float,
 ):
     Alert = get_alert_model()
@@ -246,28 +256,108 @@ def create_alerts_if_needed(
 
     smoke_threshold = getattr(settings, "SMOKE_THRESHOLD", 800)
     temperature_threshold = getattr(settings, "TEMPERATURE_THRESHOLD", 45)
+    humidity_threshold = getattr(settings, "HUMIDITY_THRESHOLD", 80)
 
     if gas >= smoke_threshold:
-        Alert.objects.create(
+        create_or_update_active_alert(
+            Alert=Alert,
             device=device,
             sensor_reading=reading,
             alert_type="SMOKE_DETECTED",
             severity="CRITICAL",
-            message="Gas value is higher than safe threshold",
+            message="Nong do gas cao hon muc an toan",
             threshold_value=smoke_threshold,
             actual_value=gas,
         )
 
     if temperature >= temperature_threshold:
-        Alert.objects.create(
+        create_or_update_active_alert(
+            Alert=Alert,
             device=device,
             sensor_reading=reading,
             alert_type="HIGH_TEMPERATURE",
             severity="HIGH",
-            message="Temperature is higher than safe threshold",
+            message="Nhiet do cao hon muc an toan",
             threshold_value=temperature_threshold,
             actual_value=temperature,
         )
+
+    if humidity >= humidity_threshold:
+        create_or_update_active_alert(
+            Alert=Alert,
+            device=device,
+            sensor_reading=reading,
+            alert_type="HIGH_HUMIDITY",
+            severity="HIGH",
+            message="Do am cao hon muc an toan",
+            threshold_value=humidity_threshold,
+            actual_value=humidity,
+        )
+
+
+def create_or_update_active_alert(
+    Alert,
+    device,
+    sensor_reading,
+    alert_type: str,
+    severity: str,
+    message: str,
+    threshold_value: float,
+    actual_value: float,
+):
+    active_alert = Alert.objects.filter(
+        device=device,
+        alert_type=alert_type,
+        is_resolved=False,
+    ).order_by("-created_at").first()
+
+    if active_alert is None:
+        Alert.objects.create(
+            device=device,
+            sensor_reading=sensor_reading,
+            alert_type=alert_type,
+            severity=severity,
+            message=message,
+            threshold_value=threshold_value,
+            actual_value=actual_value,
+        )
+        return
+
+    active_alert.sensor_reading = sensor_reading
+    active_alert.severity = severity
+    active_alert.message = message
+    active_alert.threshold_value = threshold_value
+    active_alert.actual_value = actual_value
+    active_alert.save(
+        update_fields=[
+            "sensor_reading",
+            "severity",
+            "message",
+            "threshold_value",
+            "actual_value",
+        ]
+    )
+
+
+def run_automation_rules(
+    device,
+    reading,
+    temperature: float,
+    humidity: float,
+    gas: float,
+):
+    try:
+        from smarthome.automation import AutomationService
+
+        AutomationService().handle_sensor_reading(
+            device=device,
+            reading=reading,
+            temperature=temperature,
+            humidity=humidity,
+            gas=gas,
+        )
+    except Exception:
+        pass
 
 
 def handle_state(topic: str, payload: dict):

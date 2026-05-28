@@ -100,7 +100,6 @@ Voi cong tac vat ly, ESP co the gui state khong co `command_id`; backend van cap
 - `DeviceCommand`: lich su lenh backend publish xuong ESP.
 - `Alert`: canh bao sensor hoac thiet bi.
 - `MQTTMessage`: log MQTT inbound/outbound.
-- `ActivityLog`: lich su thao tac user/he thong.
 
 ## REST API du kien
 
@@ -172,6 +171,32 @@ PATCH /api/alerts/{id}/resolve/
 GET   /api/dashboard/homes/{home_id}/overview/
 ```
 
+### Automation
+
+```text
+GET    /api/automation-rules/
+POST   /api/automation-rules/
+GET    /api/automation-rules/{id}/
+PATCH  /api/automation-rules/{id}/
+DELETE /api/automation-rules/{id}/
+```
+
+Vi du tao rule: khi ESP sensor bao nhiet do cao thi bat quat o switch `device_1`.
+
+```json
+{
+  "sensor_hashcode": "ESP_SENSOR_DEMO",
+  "target_hashcode": "ESP_CONTROL_DEMO",
+  "switch_code": "device_1",
+  "alert_type": "HIGH_TEMPERATURE",
+  "enabled": true,
+  "active_state": "ON",
+  "normal_state": "OFF"
+}
+```
+
+Khi sensor vuot nguong, backend tu publish MQTT bat switch. Khi sensor tro lai binh thuong, backend resolve alert dang mo va publish MQTT dua switch ve `normal_state`.
+
 ### Debug MQTT
 
 ```text
@@ -207,7 +232,7 @@ Kiem tra ESP offline:
 python manage.py health_check
 ```
 
-Neu ESP dang `ONLINE` nhung qua 10 phut khong gui MQTT len backend, command nay se chuyen ESP do sang `OFFLINE`.
+Command nay se chay lien tuc. Mac dinh moi 1 phut check 1 lan. Neu ESP dang `ONLINE` nhung qua 10 phut khong gui MQTT len backend, command nay se chuyen ESP do sang `OFFLINE`.
 
 ## Cau hinh MQTT
 
@@ -223,7 +248,9 @@ MQTT_KEEPALIVE=60
 MQTT_QOS=0
 SMOKE_THRESHOLD=800
 TEMPERATURE_THRESHOLD=45
+HUMIDITY_THRESHOLD=80
 ESP_OFFLINE_TIMEOUT_MINUTES=10
+ESP_HEALTH_CHECK_INTERVAL_MINUTES=1
 ```
 
 ## Luong hoat dong hien tai
@@ -446,7 +473,7 @@ Neu ESP khong gui MQTT len backend qua thoi gian cau hinh, chay:
 python manage.py health_check
 ```
 
-Mac dinh neu ESP dang `ONLINE` nhung qua 10 phut khong cap nhat `last_seen_at`, backend chuyen ESP do sang `OFFLINE`.
+Command nay se chay lien tuc. Mac dinh moi 1 phut check 1 lan. Neu ESP dang `ONLINE` nhung qua 10 phut khong cap nhat `last_seen_at`, backend chuyen ESP do sang `OFFLINE`.
 
 ## Chuc nang noi bat
 

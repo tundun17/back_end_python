@@ -293,6 +293,50 @@ class Alert(models.Model):
     def __str__(self):
         return f"{self.alert_type} - {self.device.hashcode}"
 
+
+class AutomationRule(TimeStampedModel):
+    sensor_device = models.ForeignKey(
+        ESP,
+        on_delete=models.CASCADE,
+        related_name="automation_sensor_rules",
+    )
+    target_switch = models.ForeignKey(
+        Switch,
+        on_delete=models.CASCADE,
+        related_name="automation_target_rules",
+    )
+    alert_type = models.CharField(
+        max_length=50,
+        choices=Alert.AlertType.choices,
+    )
+    enabled = models.BooleanField(default=True)
+    active_state = models.CharField(
+        max_length=10,
+        choices=Switch.State.choices,
+        default=Switch.State.ON,
+    )
+    normal_state = models.CharField(
+        max_length=10,
+        choices=Switch.State.choices,
+        default=Switch.State.OFF,
+    )
+    last_triggered_at = models.DateTimeField(null=True, blank=True)
+    last_normalized_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "automation_rules"
+        ordering = ["sensor_device", "alert_type", "target_switch"]
+        unique_together = ("sensor_device", "alert_type", "target_switch")
+        indexes = [
+            models.Index(fields=["sensor_device", "enabled"]),
+            models.Index(fields=["target_switch", "enabled"]),
+            models.Index(fields=["alert_type", "enabled"]),
+        ]
+
+    def __str__(self):
+        return f"{self.sensor_device.hashcode} - {self.alert_type} -> {self.target_switch.switch_code}"
+
+
 class MQTTMessage(models.Model):
     class Direction(models.TextChoices):
         INBOUND = "INBOUND", "ESP gửi lên Django"
@@ -344,36 +388,3 @@ class MQTTMessage(models.Model):
 
     def __str__(self):
         return f"{self.direction} - {self.topic} - {self.message_type}"
-
-class ActivityLog(models.Model):
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        related_name="activity_logs",
-        null=True,
-        blank=True,
-    )
-    device = models.ForeignKey(
-        ESP,
-        on_delete=models.SET_NULL,
-        related_name="activity_logs",
-        null=True,
-        blank=True,
-    )
-    action = models.CharField(max_length=100)
-    description = models.TextField(blank=True)
-    ip_address = models.GenericIPAddressField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = "activity_logs"
-        ordering = ["-created_at"]
-        indexes = [
-            models.Index(fields=["user", "created_at"]),
-            models.Index(fields=["device", "created_at"]),
-            models.Index(fields=["action"]),
-            models.Index(fields=["created_at"]),
-        ]
-
-    def __str__(self):
-        return f"{self.action} - {self.created_at}"

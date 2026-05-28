@@ -184,6 +184,8 @@ MQTT_COMMAND_MODEL = "smarthome.DeviceCommand"
 # Ngưỡng cảnh báo test
 SMOKE_THRESHOLD = int(os.getenv("SMOKE_THRESHOLD", 800))
 TEMPERATURE_THRESHOLD = float(os.getenv("TEMPERATURE_THRESHOLD", 45))
+HUMIDITY_THRESHOLD = float(os.getenv("HUMIDITY_THRESHOLD", 80))
 
 # ESP se bi danh dau OFFLINE neu qua so phut nay khong gui MQTT len backend.
 ESP_OFFLINE_TIMEOUT_MINUTES = int(os.getenv("ESP_OFFLINE_TIMEOUT_MINUTES", 10))
+ESP_HEALTH_CHECK_INTERVAL_MINUTES = float(os.getenv("ESP_HEALTH_CHECK_INTERVAL_MINUTES", 1))

@@ -3,6 +3,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 
 from .views import (
+    AutomationDetailView,
+    AutomationView,
     DebugMQTTInboundView,
     ESPDetailView,
     ESPMQTTMessageView,
@@ -30,6 +32,7 @@ from .views import (
 
 
 urlpatterns = [
+    #User
     path("", index, name="smarthome_index"),
     path("auth/register/", RegisterView.as_view(), name="auth_register_views"),
     path("auth/login/", TokenObtainPairView.as_view(), name="auth_login_views"),
@@ -38,12 +41,14 @@ urlpatterns = [
     path("users/me/", UserMeView.as_view(), name="user_me_views"),
     path("users/change-password/", ChangePasswordView.as_view(), name="user_change_password_views"),
 
+    #Homes, rooms
     path("homes/", HomeView.as_view(), name="home_views"),
     path("homes/<int:home_id>/", HomeDetailView.as_view(), name="home_detail_views"),
     path("dashboard/homes/<int:home_id>/overview/", HomeOverviewView.as_view(), name="home_overview_views"),
     path("homes/<int:home_id>/rooms/", RoomView.as_view(), name="room_views"),
     path("homes/<int:home_id>/rooms/<int:room_id>/", RoomDetailView.as_view(), name="room_detail_views"),
     
+    #ESPs
     path("esps/", ESPView.as_view(), name="esp_views"),
     path("esps/<str:hashcode>/", ESPDetailView.as_view(), name="esp_detail_views"),
     path("esps/<str:hashcode>/mqtt-messages/", ESPMQTTMessageView.as_view(), name="esp_mqtt_message_views"),
@@ -54,6 +59,10 @@ urlpatterns = [
     path("esps/<str:hashcode>/switches/<str:switch_code>/commands/", SwitchCommandView.as_view(), name="switch_command_views"),
     path("esps/<str:hashcode>/switches/<str:switch_code>/", SwitchDetailView.as_view(), name="switch_detail_views"),
     path("debug/mqtt/inbound/", DebugMQTTInboundView.as_view(), name="debug_mqtt_inbound_views"),
+
+    # Automation
+    path("automation/", AutomationView.as_view(), name="automation_views"),
+    path("automation/<int:id>/", AutomationDetailView.as_view(), name="automation_detail_views"),
 
     # Alert
     path("alerts/", AlertView.as_view(), name="alert_views"),
