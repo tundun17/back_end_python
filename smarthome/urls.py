@@ -44,7 +44,7 @@ urlpatterns = [
     #Homes, rooms
     path("homes/", HomeView.as_view(), name="home_views"),
     path("homes/<int:home_id>/", HomeDetailView.as_view(), name="home_detail_views"),
-    path("dashboard/homes/<int:home_id>/overview/", HomeOverviewView.as_view(), name="home_overview_views"),
+    path("homes/<int:home_id>/overview/", HomeOverviewView.as_view(), name="home_overview_views"),
     path("homes/<int:home_id>/rooms/", RoomView.as_view(), name="room_views"),
     path("homes/<int:home_id>/rooms/<int:room_id>/", RoomDetailView.as_view(), name="room_detail_views"),
     
