@@ -347,7 +347,7 @@ def run_automation_rules(
     gas: float,
 ):
     try:
-        from smarthome.automation import AutomationService
+        from automation.services import AutomationService
 
         AutomationService().handle_sensor_reading(
             device=device,

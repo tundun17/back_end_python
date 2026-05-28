@@ -1,34 +1,18 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-
-from .views import (
-    AutomationDetailView,
-    AutomationView,
-    DebugMQTTInboundView,
+from .views_alert import AlertDetailView, AlertResolveView, AlertView
+from .views_auth import ChangePasswordView, LogoutView, RegisterView, UserMeView, index
+from .views_automation import AutomationDetailView, AutomationView
+from .views_esp import (
     ESPDetailView,
     ESPMQTTMessageView,
     ESPSensorHistoryView,
     ESPSensorLatestView,
     ESPView,
-    HomeDetailView,
-    HomeOverviewView,
-    HomeView,
-    LogoutView,
-    RegisterView,
-    RoomDetailView,
-    RoomView,
-    SwitchCommandView,
-    SwitchControlView,
-    SwitchDetailView,
-    SwitchView,
-    ChangePasswordView,
-    UserMeView,
-    index,
-    AlertView,
-    AlertDetailView,
-    AlertResolveView,
 )
+from .views_home import HomeDetailView, HomeOverviewView, HomeView, RoomDetailView, RoomView
+from .views_switch import SwitchCommandView, SwitchControlView, SwitchDetailView, SwitchView
 
 
 urlpatterns = [
@@ -58,7 +42,6 @@ urlpatterns = [
     path("esps/<str:hashcode>/switches/<str:switch_code>/control/", SwitchControlView.as_view(), name="switch_control_views"),
     path("esps/<str:hashcode>/switches/<str:switch_code>/commands/", SwitchCommandView.as_view(), name="switch_command_views"),
     path("esps/<str:hashcode>/switches/<str:switch_code>/", SwitchDetailView.as_view(), name="switch_detail_views"),
-    path("debug/mqtt/inbound/", DebugMQTTInboundView.as_view(), name="debug_mqtt_inbound_views"),
 
     # Automation
     path("automation/", AutomationView.as_view(), name="automation_views"),

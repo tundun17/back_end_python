@@ -3,8 +3,7 @@ from django.utils import timezone
 
 from mqtt_client.client import MQTTClientError
 from mqtt_client.services import MQTTServiceError, publish_control_command
-
-from .models import Alert, AutomationRule, DeviceCommand, Switch
+from smarthome.models import Alert, AutomationRule, DeviceCommand, Switch
 
 
 class AutomationService:
@@ -18,9 +17,7 @@ class AutomationService:
         )
 
         for rule in rules:
-            is_active = self.is_rule_active(rule, temperature, humidity, gas)
-
-            if is_active:
+            if self.is_rule_active(rule, temperature, humidity, gas):
                 self.activate_rule(rule)
             else:
                 self.normalize_rule(rule)
@@ -93,13 +90,6 @@ class AutomationService:
         switch.desired_state = state
         switch.sync_status = Switch.SyncStatus.PENDING
         switch.last_controlled_at = timezone.now()
-        switch.save(
-            update_fields=[
-                "desired_state",
-                "sync_status",
-                "last_controlled_at",
-                "updated_at",
-            ]
-        )
+        switch.save(update_fields=["desired_state", "sync_status", "last_controlled_at", "updated_at"])
 
         return publish_result

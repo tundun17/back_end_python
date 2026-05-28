@@ -203,7 +203,6 @@ Khi sensor vuot nguong, backend tu publish MQTT bat switch. Khi sensor tro lai b
 GET  /api/mqtt/messages/
 GET  /api/mqtt/messages/{id}/
 POST /api/mqtt/test-publish/
-POST /api/debug/mqtt/inbound/
 ```
 
 ## Chay project
