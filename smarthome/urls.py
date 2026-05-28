@@ -23,6 +23,9 @@ from .views import (
     ChangePasswordView,
     UserMeView,
     index,
+    AlertView,
+    AlertDetailView,
+    AlertResolveView,
 )
 
 
@@ -51,4 +54,9 @@ urlpatterns = [
     path("esps/<str:hashcode>/switches/<str:switch_code>/commands/", SwitchCommandView.as_view(), name="switch_command_views"),
     path("esps/<str:hashcode>/switches/<str:switch_code>/", SwitchDetailView.as_view(), name="switch_detail_views"),
     path("debug/mqtt/inbound/", DebugMQTTInboundView.as_view(), name="debug_mqtt_inbound_views"),
+
+    # Alert
+    path("alerts/", AlertView.as_view(), name="alert_views"),
+    path("alerts/<int:id>/", AlertDetailView.as_view(), name="alert_detail_views"),
+    path("alerts/<int:id>/resolve/",AlertResolveView.as_view(),name="alert_resolve_views")
 ]
