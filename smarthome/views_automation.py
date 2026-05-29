@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Alert, AutomationRule, ESP, Switch
+from .models import Alert, Automation, ESP, Switch
 from .views_common import automation_rule_to_dict, parse_boolean
 
 
@@ -12,7 +12,7 @@ class AutomationView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        rules = AutomationRule.objects.select_related(
+        rules = Automation.objects.select_related(
             "sensor_device",
             "target_switch",
             "target_switch__esp_device",
@@ -55,7 +55,7 @@ class AutomationView(APIView):
         if target_switch.esp_device.home_id != sensor_esp.home_id:
             return Response({"message": "Sensor ESP va switch dieu khien phai thuoc cung mot nha."}, status=status.HTTP_400_BAD_REQUEST)
 
-        rule, created = AutomationRule.objects.update_or_create(
+        rule, created = Automation.objects.update_or_create(
             sensor_device=sensor_esp,
             target_switch=target_switch,
             alert_type=alert_type,
@@ -79,7 +79,7 @@ class AutomationDetailView(APIView):
 
     def get_rule(self, request, id):
         return get_object_or_404(
-            AutomationRule.objects.select_related("sensor_device", "target_switch", "target_switch__esp_device"),
+            Automation.objects.select_related("sensor_device", "target_switch", "target_switch__esp_device"),
             id=id,
             sensor_device__home__owner=request.user,
         )

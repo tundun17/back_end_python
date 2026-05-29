@@ -242,8 +242,7 @@ class Alert(models.Model):
         HIGH_TEMPERATURE = "HIGH_TEMPERATURE", "Nhiệt độ cao"
         HIGH_HUMIDITY = "HIGH_HUMIDITY", "Độ ẩm cao"
         HIGH_SMOKE_LEVEL = "HIGH_SMOKE_LEVEL", "Mức khói cao"
-        SMOKE_DETECTED = "SMOKE_DETECTED", "Phát hiện khói"
-        DEVICE_OFFLINE = "DEVICE_OFFLINE", "Thiết bị offline"
+
 
     class Severity(models.TextChoices):
         LOW = "LOW", "Thấp"
@@ -294,7 +293,7 @@ class Alert(models.Model):
         return f"{self.alert_type} - {self.device.hashcode}"
 
 
-class AutomationRule(TimeStampedModel):
+class Automation(TimeStampedModel):
     sensor_device = models.ForeignKey(
         ESP,
         on_delete=models.CASCADE,
@@ -324,7 +323,7 @@ class AutomationRule(TimeStampedModel):
     last_normalized_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        db_table = "automation_rules"
+        db_table = "automation"
         ordering = ["sensor_device", "alert_type", "target_switch"]
         unique_together = ("sensor_device", "alert_type", "target_switch")
         indexes = [

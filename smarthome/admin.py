@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Alert,
-    AutomationRule,
+    Automation,
     DeviceCommand,
     ESP,
     Home,
@@ -81,8 +81,8 @@ class AlertAdmin(admin.ModelAdmin):
     search_fields = ("device__hashcode", "message")
 
 
-@admin.register(AutomationRule)
-class AutomationRuleAdmin(admin.ModelAdmin):
+@admin.register(Automation)
+class AutomationAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "sensor_device",

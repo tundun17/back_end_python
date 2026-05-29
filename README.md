@@ -122,6 +122,7 @@ POST   /api/homes/
 GET    /api/homes/{id}/
 PATCH  /api/homes/{id}/
 DELETE /api/homes/{id}/
+GET   /api//homes/{home_id}/overview/
 GET    /api/homes/{home_id}/rooms/
 POST   /api/homes/{home_id}/rooms/
 PATCH  /api/rooms/{id}/
@@ -159,7 +160,7 @@ Payload control switch:
 
 `state` chap nhan: `ON`, `OFF`, `1`, `0`, `true`, `false`.
 
-### Sensor, alert va dashboard
+### Sensor va alert
 
 ```text
 GET   /api/esps/{hashcode}/sensor-readings/latest/
@@ -168,17 +169,16 @@ GET   /api/sensor-readings/
 GET   /api/alerts/
 GET   /api/alerts/{id}/
 PATCH /api/alerts/{id}/resolve/
-GET   /api/dashboard/homes/{home_id}/overview/
 ```
 
 ### Automation
 
 ```text
-GET    /api/automation-rules/
-POST   /api/automation-rules/
-GET    /api/automation-rules/{id}/
-PATCH  /api/automation-rules/{id}/
-DELETE /api/automation-rules/{id}/
+GET    /api/automation/
+POST   /api/automation/
+GET    /api/automation/{id}/
+PATCH  /api/automation/{id}/
+DELETE /api/automation/{id}/
 ```
 
 Vi du tao rule: khi ESP sensor bao nhiet do cao thi bat quat o switch `device_1`.
@@ -436,6 +436,7 @@ Backend se:
 - Luu vao `SensorReading`.
 - Cap nhat `last_seen_at` cua ESP.
 - Tao `Alert` neu gas hoac nhiet do vuot nguong cau hinh.
+- Goi automation engine de kiem tra co rule phu hop hay khong.
 
 Frontend co the doc du lieu sensor qua:
 
@@ -444,12 +445,52 @@ GET /api/esps/{hashcode}/sensor-readings/latest/
 GET /api/esps/{hashcode}/sensor-readings/history/
 ```
 
-### 6. Dashboard doc du lieu tong quan
+### 6. Automation xu ly rule tu dong
+
+User co the tao automation rule bang API:
+
+```text
+POST /api/automation/
+```
+
+Vi du: khi ESP sensor bao nhiet do cao thi bat switch `device_1` cua ESP dieu khien quat.
+
+```json
+{
+  "sensor_hashcode": "ESP_SENSOR_DEMO",
+  "target_hashcode": "ESP_CONTROL_DEMO",
+  "switch_code": "device_1",
+  "alert_type": "HIGH_TEMPERATURE",
+  "enabled": true,
+  "active_state": "ON",
+  "normal_state": "OFF"
+}
+```
+
+Khi sensor gui du lieu vuot nguong, backend tao hoac cap nhat alert dang mo. Sau do automation engine se:
+
+- Tim rule dang bat `enabled = true` theo sensor ESP va `alert_type`.
+- Tim switch muc tieu can dieu khien.
+- Publish MQTT command xuong topic `{target_hashcode}/set`.
+- Cap nhat `desired_state` cua switch thanh `active_state`.
+
+Khi du lieu sensor tro lai muc binh thuong, backend se resolve alert dang mo. Neu automation rule co `normal_state`, backend publish command dua switch ve trang thai binh thuong, vi du tat quat khi nhiet do da giam.
+
+Frontend co the quan ly automation qua:
+
+```text
+GET    /api/automation/
+GET    /api/automation/{id}/
+PATCH  /api/automation/{id}/
+DELETE /api/automation/{id}/
+```
+
+### 7. Dashboard doc du lieu tong quan
 
 Dashboard goi:
 
 ```text
-GET /api/dashboard/homes/{home_id}/overview/
+GET /api/homes/{home_id}/overview/
 ```
 
 API nay gom so lieu:
@@ -464,7 +505,7 @@ API nay gom so lieu:
 
 Dashboard co the goi them cac API rooms, esps, switches, sensor readings va mqtt messages de hien thi chi tiet.
 
-### 7. Health check danh dau ESP offline
+### 8. Health check danh dau ESP offline
 
 Neu ESP khong gui MQTT len backend qua thoi gian cau hinh, chay:
 

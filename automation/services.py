@@ -3,12 +3,12 @@ from django.utils import timezone
 
 from mqtt_client.client import MQTTClientError
 from mqtt_client.services import MQTTServiceError, publish_control_command
-from smarthome.models import Alert, AutomationRule, DeviceCommand, Switch
+from smarthome.models import Alert, Automation, DeviceCommand, Switch
 
 
 class AutomationService:
     def handle_sensor_reading(self, device, reading, temperature: float, humidity: float, gas: float):
-        rules = AutomationRule.objects.select_related(
+        rules = Automation.objects.select_related(
             "target_switch",
             "target_switch__esp_device",
         ).filter(
