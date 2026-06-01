@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Alert, Automation, ESP, Switch
-from .views_common import automation_rule_to_dict, parse_boolean
+from .serializers import automation_rule_to_dict, parse_boolean
 
 
 class AutomationView(APIView):

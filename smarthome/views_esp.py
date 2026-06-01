@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import ESP, Home, MQTTMessage, Room, SensorReading
-from .views_common import (
+from .serializers import (
     esp_to_dict,
     mqtt_message_to_dict,
     parse_boolean,

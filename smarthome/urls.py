@@ -2,7 +2,7 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .views_alert import AlertDetailView, AlertResolveView, AlertView
-from .views_auth import ChangePasswordView, LogoutView, RegisterView, UserMeView, index
+from .views_auth import ChangePasswordView, LogoutView, RegisterView, UserMeView
 from .views_automation import AutomationDetailView, AutomationView
 from .views_esp import (
     ESPDetailView,
@@ -17,7 +17,6 @@ from .views_switch import SwitchCommandView, SwitchControlView, SwitchDetailView
 
 urlpatterns = [
     #User
-    path("", index, name="smarthome_index"),
     path("auth/register/", RegisterView.as_view(), name="auth_register_views"),
     path("auth/login/", TokenObtainPairView.as_view(), name="auth_login_views"),
     path("auth/refresh/", TokenRefreshView.as_view(), name="auth_refresh_views"),

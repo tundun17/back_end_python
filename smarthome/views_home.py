@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Home, Room
-from .views_common import home_overview_to_dict, home_to_dict, room_to_dict
+from .serializers import home_overview_to_dict, home_to_dict, room_to_dict
 
 
 class HomeView(APIView):

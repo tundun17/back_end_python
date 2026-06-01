@@ -1,5 +1,5 @@
 from .views_alert import AlertDetailView, AlertResolveView, AlertView
-from .views_auth import ChangePasswordView, LogoutView, RegisterView, UserMeView, index
+from .views_auth import ChangePasswordView, LogoutView, RegisterView, UserMeView
 from .views_automation import AutomationDetailView, AutomationView
 from .views_esp import (
     ESPDetailView,
@@ -36,5 +36,4 @@ __all__ = [
     "SwitchDetailView",
     "SwitchView",
     "UserMeView",
-    "index",
 ]

@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Alert
-from .views_common import alert_to_dict
+from .serializers import alert_to_dict
 
 
 class AlertView(APIView):

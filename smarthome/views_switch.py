@@ -9,7 +9,7 @@ from mqtt_client.client import MQTTClientError
 from mqtt_client.services import MQTTServiceError, normalize_state, publish_control_command
 
 from .models import DeviceCommand, ESP, Switch
-from .views_common import command_to_dict, switch_to_dict
+from .serializers import command_to_dict, switch_to_dict
 
 
 class SwitchView(APIView):

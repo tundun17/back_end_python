@@ -263,7 +263,7 @@ def create_alerts_if_needed(
             Alert=Alert,
             device=device,
             sensor_reading=reading,
-            alert_type="SMOKE_DETECTED",
+            alert_type="HIGH_SMOKE_LEVEL",
             severity="CRITICAL",
             message="Nong do gas cao hon muc an toan",
             threshold_value=smoke_threshold,

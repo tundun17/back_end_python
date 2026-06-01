@@ -1,9 +1,4 @@
-from django.http import HttpResponse
 from django.utils import timezone
-
-
-def index(request):
-    return HttpResponse("Xin chao. <br>Ban da den trang Smart Home Backend")
 
 
 def missing_fields(body, required_fields):

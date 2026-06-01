@@ -6,7 +6,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .views_common import index, user_to_dict
+from .serializers import user_to_dict
 
 
 User = get_user_model()
