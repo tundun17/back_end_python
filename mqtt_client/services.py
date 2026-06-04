@@ -23,6 +23,7 @@ def normalize_state(state: Any) -> str:
             return "ON"
         if state == 0:
             return "OFF"
+        
 
     if isinstance(state, str):
         value = state.strip().upper()
@@ -32,6 +33,9 @@ def normalize_state(state: Any) -> str:
 
         if value in ["OFF", "0", "FALSE"]:
             return "OFF"
+        
+        if value == "TOGGLE":
+            return "TOGGLE"
 
     raise MQTTServiceError("state chỉ được là ON, OFF, 1, 0, true hoặc false")
 

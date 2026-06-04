@@ -2,6 +2,7 @@ from django.apps import apps
 from django.conf import settings
 from django.core.validators import validate_ipv46_address
 from django.utils import timezone
+import logging
 
 from .services import (
     MQTTServiceError,
@@ -11,6 +12,9 @@ from .services import (
     parse_payload,
     publish_ack_command,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_model_or_none(model_path: str):
@@ -357,7 +361,7 @@ def run_automation_rules(
             gas=gas,
         )
     except Exception:
-        pass
+        logger.exception("Automation failed while handling sensor reading")
 
 
 def handle_state(topic: str, payload: dict):

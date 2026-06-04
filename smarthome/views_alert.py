@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 
 from .models import Alert
 from .serializers import alert_to_dict
+from automation.services import AutomationService
 
 
 class AlertView(APIView):
@@ -73,6 +74,7 @@ class AlertResolveView(APIView):
         alert.is_resolved = True
         alert.resolved_at = timezone.now()
         alert.save(update_fields=["is_resolved", "resolved_at"])
+        AutomationService().handle_alert_resolved(alert)
 
         return Response(
             {"message": "Da xu ly canh bao thanh cong.", "alert": alert_to_dict(alert)},

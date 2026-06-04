@@ -51,3 +51,4 @@ urlpatterns = [
     path("alerts/<int:id>/", AlertDetailView.as_view(), name="alert_detail_views"),
     path("alerts/<int:id>/resolve/",AlertResolveView.as_view(),name="alert_resolve_views")
 ]
+    

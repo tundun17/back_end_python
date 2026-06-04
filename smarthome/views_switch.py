@@ -66,6 +66,28 @@ class SwitchControlView(APIView):
             return Response({"state": str(error)}, status=status.HTTP_400_BAD_REQUEST)
 
         switch = self.get_switch(request, hashcode, switch_code)
+        if state == "TOGGLE":
+            state = Switch.State.OFF if switch.actual_state == Switch.State.ON else Switch.State.ON
+
+        if state == switch.actual_state:
+            command = DeviceCommand.objects.create(
+                esp=switch.esp_device,
+                switch=switch,
+                command_type="SET_DEVICE_STATE",
+                command_value=state,
+                status=DeviceCommand.CommandStatus.FAILED,
+                created_by=request.user,
+                error_message=f"Trang thai hien tai da la {state}, khong publish xuong ESP.",
+            )
+
+            return Response(
+                {
+                    "message": "Trang thai yeu cau trung voi actual_state hien tai, khong gui lenh xuong ESP.",
+                    "command": command_to_dict(command),
+                    "switch": switch_to_dict(switch),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         command = DeviceCommand.objects.create(
             esp=switch.esp_device,
             switch=switch,

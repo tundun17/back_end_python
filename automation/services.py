@@ -26,7 +26,7 @@ class AutomationService:
         if rule.alert_type == Alert.AlertType.HIGH_TEMPERATURE:
             return temperature >= getattr(settings, "TEMPERATURE_THRESHOLD", 45)
 
-        if rule.alert_type in [Alert.AlertType.SMOKE_DETECTED, Alert.AlertType.HIGH_SMOKE_LEVEL]:
+        if rule.alert_type == Alert.AlertType.HIGH_SMOKE_LEVEL:
             return gas >= getattr(settings, "SMOKE_THRESHOLD", 800)
 
         if rule.alert_type == Alert.AlertType.HIGH_HUMIDITY:
@@ -46,20 +46,32 @@ class AutomationService:
             is_resolved=False,
         ).first()
 
-        if active_alert is not None:
-            active_alert.is_resolved = True
-            active_alert.resolved_at = timezone.now()
-            active_alert.save(update_fields=["is_resolved", "resolved_at"])
+        if active_alert is None:
+            return None
 
-        self.publish_state_if_needed(rule.target_switch, rule.normal_state)
-        rule.last_normalized_at = timezone.now()
-        rule.save(update_fields=["last_normalized_at", "updated_at"])
+        active_alert.is_resolved = True
+        active_alert.resolved_at = timezone.now()
+        active_alert.save(update_fields=["is_resolved", "resolved_at"])
+        self.handle_alert_resolved(active_alert)
+
+    def handle_alert_resolved(self, alert):
+        rules = Automation.objects.select_related(
+            "target_switch",
+            "target_switch__esp_device",
+        ).filter(
+            sensor_device=alert.device,
+            alert_type=alert.alert_type,
+            enabled=True,
+        )
+
+        for rule in rules:
+            self.publish_state_if_needed(rule.target_switch, rule.normal_state)
+            rule.last_normalized_at = timezone.now()
+            rule.save(update_fields=["last_normalized_at", "updated_at"])
 
     def publish_state_if_needed(self, switch, state: str):
-        if switch.desired_state == state and switch.sync_status in [
-            Switch.SyncStatus.SYNCED,
-            Switch.SyncStatus.PENDING,
-        ]:
+        switch.refresh_from_db(fields=["actual_state", "sync_status"])
+        if switch.actual_state == state and switch.sync_status == Switch.SyncStatus.SYNCED:
             return None
 
         command = DeviceCommand.objects.create(
